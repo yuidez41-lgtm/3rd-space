@@ -7268,6 +7268,78 @@ function SalesCalendar({
                       ).toLocaleString("en-PH", { minimumFractionDigits: 0 })}
                     </p>
                   </div>
+                  {!!selectedStats.report.paidInTotal && (
+                    <div
+                      style={{
+                        background: "rgba(34,197,94,0.06)",
+                        border: "1px solid rgba(34,197,94,0.2)",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <p
+                        style={{
+                          color: T.muted,
+                          fontSize: 9,
+                          letterSpacing: ".1em",
+                          fontFamily: "'Cinzel',serif",
+                          marginBottom: 4,
+                        }}
+                      >
+                        PAID IN
+                      </p>
+                      <p
+                        style={{
+                          color: T.green,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          fontFamily: "'Cinzel',serif",
+                        }}
+                      >
+                        +₱
+                        {selectedStats.report.paidInTotal.toLocaleString(
+                          "en-PH",
+                          { minimumFractionDigits: 0 },
+                        )}
+                      </p>
+                    </div>
+                  )}
+                  {!!selectedStats.report.paidOutTotal && (
+                    <div
+                      style={{
+                        background: "rgba(239,68,68,0.06)",
+                        border: "1px solid rgba(239,68,68,0.2)",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                      }}
+                    >
+                      <p
+                        style={{
+                          color: T.muted,
+                          fontSize: 9,
+                          letterSpacing: ".1em",
+                          fontFamily: "'Cinzel',serif",
+                          marginBottom: 4,
+                        }}
+                      >
+                        PAID OUT
+                      </p>
+                      <p
+                        style={{
+                          color: T.red,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          fontFamily: "'Cinzel',serif",
+                        }}
+                      >
+                        -₱
+                        {selectedStats.report.paidOutTotal.toLocaleString(
+                          "en-PH",
+                          { minimumFractionDigits: 0 },
+                        )}
+                      </p>
+                    </div>
+                  )}
                   <div
                     style={{
                       background: T.bgCard,
@@ -8010,6 +8082,8 @@ function TodayReport({
 <tr class="section"><td colspan="2">CASH RECONCILIATION</td></tr>
             ${row("Starting cash", `₱${startingCash.toFixed(2)}`)}
             ${row("Cash sales", `₱${cashRev.toFixed(2)}`)}
+            ${sr && sr.paidInTotal ? row("Paid in", `+₱${sr.paidInTotal.toFixed(2)}`) : ""}
+            ${sr && sr.paidOutTotal ? row("Paid out", `-₱${sr.paidOutTotal.toFixed(2)}`) : ""}
             ${row("Expected cash", `₱${expectedCash.toFixed(2)}`)}
             ${row("Counted cash", countedCash != null ? `₱${countedCash.toFixed(2)}` : "—")}
             ${row(
@@ -9409,6 +9483,8 @@ ${row("Cash", fmt(sr.cashRev))}
           ${row("GCash", fmt(sr.gcashRev))}
           ${row("Discounts", fmt(sr.discountTotal || 0))}
           ${row("Starting cash", fmt(sr.startingCash || 0))}
+          ${sr.paidInTotal ? row("Paid in", `+${fmt(sr.paidInTotal)}`) : ""}
+          ${sr.paidOutTotal ? row("Paid out", `-${fmt(sr.paidOutTotal)}`) : ""}
           ${row("Expected cash", fmt(expectedCash))}
           ${row("Counted cash", sr.countedCash != null ? fmt(sr.countedCash) : "—")}
           ${
@@ -16407,7 +16483,7 @@ export default function AdminDashboard() {
     setMenuItems([]);
   }
 
- async function fetchData(silent = false): Promise<void> {
+  async function fetchData(silent = false): Promise<void> {
     try {
       if (!silent) setLoading(true);
       const [oRes, sRes] = await Promise.all([
