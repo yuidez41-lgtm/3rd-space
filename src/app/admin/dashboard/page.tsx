@@ -12294,7 +12294,7 @@ function CrewTab({
 
   useEffect(() => {
     fetchMyOrders();
-    const id = setInterval(fetchMyOrders, 15000);
+    const id = setInterval(fetchMyOrders, 45000);
     return () => clearInterval(id);
   }, [staffName]);
 
@@ -16345,7 +16345,7 @@ export default function AdminDashboard() {
     const id = setInterval(() => {
       fetchData(true);
       fetchLiveCashLog();
-    }, 15000);
+    }, 60000);
     return () => {
       clearInterval(id);
       es?.close();
@@ -16407,18 +16407,23 @@ export default function AdminDashboard() {
     setMenuItems([]);
   }
 
-  async function fetchData(silent = false): Promise<void> {
+ async function fetchData(silent = false): Promise<void> {
     try {
       if (!silent) setLoading(true);
-      const [oRes, mRes, sRes, srRes] = await Promise.all([
+      const [oRes, sRes] = await Promise.all([
         fetch("/api/orders"),
-        fetch("/api/menu"),
         fetch("/api/shop-status"),
-        fetch("/api/shift-reports"),
       ]);
-      if (srRes.ok) {
-        const srData = await srRes.json();
-        if (Array.isArray(srData)) setShiftReports(srData);
+      if (!silent) {
+        const [mRes, srRes] = await Promise.all([
+          fetch("/api/menu"),
+          fetch("/api/shift-reports"),
+        ]);
+        if (srRes.ok) {
+          const srData = await srRes.json();
+          if (Array.isArray(srData)) setShiftReports(srData);
+        }
+        if (mRes.ok) setMenuItems(await mRes.json());
       }
       if (sRes.ok) {
         const s = await sRes.json();
@@ -16472,7 +16477,6 @@ export default function AdminDashboard() {
         prevOrderIdsRef.current = new Set(fetched.map((o) => o._id));
         setOrders(fetched);
       }
-      if (mRes.ok) setMenuItems(await mRes.json());
     } catch (e) {
       console.error(e);
     } finally {
