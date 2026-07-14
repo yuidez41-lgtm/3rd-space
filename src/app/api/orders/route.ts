@@ -109,6 +109,65 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Duplicate-submission guard ──────────────────────────────────────
+  // Covers double-taps, slow-network retries, or a client resubmitting
+  // after a timeout even though the first request actually went through.
+  // Scope: same type + table/customer + same item lines + same total,
+  // created within the last 20 seconds. This is intentionally tight so
+  // it never blocks a legitimate quick reorder of the same items.
+  {
+    const dupWindowStart = new Date(Date.now() - 20 * 1000);
+    const dupQuery: any = {
+      type,
+      total,
+      createdAt: { $gte: dupWindowStart },
+    };
+    if (type === "dine-in") {
+      dupQuery.tableNumber = tableNumber || null;
+      dupQuery.customerName = customerName || null;
+    } else if (type === "delivery") {
+      dupQuery.customerContact = customerContact || null;
+    } else {
+      dupQuery.customerName = customerName || null;
+    }
+
+    const candidateDupes = await Order.find(dupQuery)
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
+
+    const incomingSignature = JSON.stringify(
+      (items || [])
+        .map((i: any) => ({
+          id: i.id || i.menuItemId || i.name,
+          qty: i.quantity,
+        }))
+        .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id))),
+    );
+
+    const isDuplicate = candidateDupes.some((existing: any) => {
+      const existingSignature = JSON.stringify(
+        (existing.items || [])
+          .map((i: any) => ({
+            id: i.menuItemId || i.name,
+            qty: i.quantity,
+          }))
+          .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id))),
+      );
+      return existingSignature === incomingSignature;
+    });
+
+    if (isDuplicate) {
+      return NextResponse.json(
+        {
+          error:
+            "This looks like a duplicate of an order just placed. If this is a new order, please wait a few seconds and try again.",
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   // ── Server-side availability check ──────────────────────────────────
   // The customer's cart is built from a menu snapshot fetched on page
   // load. If an admin hides an item while they're mid-checkout, nothing
