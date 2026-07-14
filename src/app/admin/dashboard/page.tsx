@@ -16500,6 +16500,7 @@ export default function AdminDashboard() {
           if (Array.isArray(srData)) setShiftReports(srData);
         }
         if (mRes.ok) setMenuItems(await mRes.json());
+        fetchLiveCashLog();
       }
       if (sRes.ok) {
         const s = await sRes.json();
