@@ -1922,20 +1922,33 @@ function DeliveryMapPanel({
 
   // Subscribe to rider location SSE
   useEffect(() => {
-    const es = new EventSource(`/api/orders/${orderId}/location`);
-    es.onmessage = (e) => {
+    let cancelled = false;
+
+    const poll = async () => {
       try {
-        const data = JSON.parse(e.data);
+        const res = await fetch(`/api/orders/${orderId}/location`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
         if (data.type === "location") {
           setRiderPos({ lat: data.lat, lng: data.lng });
           if (data.riderName) setRiderName(data.riderName);
-        } else if (data.type === "stopped" || data.type === "waiting") {
+        } else if (
+          data.type === "stopped" ||
+          data.type === "waiting" ||
+          !data.type
+        ) {
           setRiderPos(null);
           setRiderName(null);
         }
       } catch {}
     };
-    return () => es.close();
+
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [orderId]);
 
   // Update rider marker when position changes
@@ -2328,18 +2341,29 @@ function RiderTrackingButton({
   const watchIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const es = new EventSource(`/api/orders/${orderId}/location`);
-    es.onmessage = (e) => {
+    let cancelled = false;
+    const poll = async () => {
       try {
-        const data = JSON.parse(e.data);
+        const res = await fetch(`/api/orders/${orderId}/location`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
         if (data.type === "location" && data.riderName) {
           setActiveRider(data.riderName);
-        } else if (data.type === "stopped" || data.type === "waiting") {
+        } else if (
+          data.type === "stopped" ||
+          data.type === "waiting" ||
+          !data.type
+        ) {
           setActiveRider(null);
         }
       } catch {}
     };
-    return () => es.close();
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [orderId]);
 
   const pushLocation = async (lat: number, lng: number) => {
@@ -16406,25 +16430,26 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (!role) return;
-    let es: EventSource;
 
-    function connect() {
-      es = new EventSource("/api/orders/stream");
-      es.onmessage = () => setTimeout(() => fetchData(true), 300);
-      es.onerror = () => {
-        es.close();
-        setTimeout(connect, 3000);
-      };
-    }
-
-    connect();
-    const id = setInterval(() => {
+    const poll = () => {
       fetchData(true);
       fetchLiveCashLog();
-    }, 60000);
+    };
+
+    poll(); // fetch immediately so it doesn't wait 8s on first load
+
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") poll();
+    }, 8000);
+
+    const visHandler = () => {
+      if (document.visibilityState === "visible") poll();
+    };
+    document.addEventListener("visibilitychange", visHandler);
+
     return () => {
       clearInterval(id);
-      es?.close();
+      document.removeEventListener("visibilitychange", visHandler);
     };
   }, [role]);
 
