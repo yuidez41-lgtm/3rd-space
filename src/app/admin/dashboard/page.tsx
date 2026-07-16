@@ -16041,6 +16041,7 @@ export default function AdminDashboard() {
     type: "order";
   } | null>(null);
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
+  const discountBusyRef = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -16188,8 +16189,15 @@ export default function AdminDashboard() {
     discountName: string,
     discountPct: number,
   ) {
+    const busyKey = `${orderId}:${itemIndex}`;
+    if (discountBusyRef.current.has(busyKey)) return;
+    discountBusyRef.current.add(busyKey);
+
     const target = orders.find((o) => o._id === orderId);
-    if (!target) return;
+    if (!target) {
+      discountBusyRef.current.delete(busyKey);
+      return;
+    }
     const prevOrders = orders;
     const item = target.items[itemIndex];
     const lineTotal = item.price * item.quantity;
@@ -16227,10 +16235,16 @@ export default function AdminDashboard() {
     } catch {
       setOrders(prevOrders);
       showToast("Failed to apply discount", false);
+    } finally {
+      discountBusyRef.current.delete(busyKey);
     }
   }
 
   async function removeItemDiscount(orderId: string, itemIndex: number) {
+    const busyKey = `${orderId}:${itemIndex}`;
+    if (discountBusyRef.current.has(busyKey)) return;
+    discountBusyRef.current.add(busyKey);
+
     const prevOrders = orders;
     setOrders((p) =>
       p.map((o) => {
@@ -16267,6 +16281,8 @@ export default function AdminDashboard() {
     } catch {
       setOrders(prevOrders);
       showToast("Failed to remove discount", false);
+    } finally {
+      discountBusyRef.current.delete(busyKey);
     }
   }
 

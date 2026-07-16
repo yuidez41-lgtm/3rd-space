@@ -152,40 +152,55 @@ export async function PATCH(
     if (body.itemDiscount) {
       const { itemIndex, discountName, discountPct, remove } =
         body.itemDiscount;
-      const order = await Order.findById(id);
-      if (!order)
-        return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-      const item = order.items[itemIndex];
-      if (!item)
-        return NextResponse.json(
-          { error: "Item not found on order" },
-          { status: 400 },
-        );
+      // Retry loop handles the rare case of a genuine concurrent write
+      // (e.g. two taps landing at nearly the same instant) by re-reading
+      // the latest version and re-applying the intended change, instead
+      // of throwing a VersionError.
+      let updatedOrder = null;
+      for (let attempt = 0; attempt < 3 && !updatedOrder; attempt++) {
+        const current = await Order.findById(id);
+        if (!current)
+          return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-      if (remove) {
-        item.discountName = undefined;
-        item.discountPct = undefined;
-        item.discountAmount = undefined;
-      } else {
-        const lineTotal = item.price * item.quantity;
-        const amount = Math.round(lineTotal * discountPct) / 100;
-        item.discountName = discountName;
-        item.discountPct = discountPct;
-        item.discountAmount = amount;
+        const item = current.items[itemIndex];
+        if (!item)
+          return NextResponse.json(
+            { error: "Item not found on order" },
+            { status: 400 },
+          );
+
+        if (remove) {
+          item.discountName = undefined;
+          item.discountPct = undefined;
+          item.discountAmount = undefined;
+        } else {
+          const lineTotal = item.price * item.quantity;
+          const amount = Math.round(lineTotal * discountPct) / 100;
+          item.discountName = discountName;
+          item.discountPct = discountPct;
+          item.discountAmount = amount;
+        }
+
+        const itemsTotal = current.items.reduce((sum: number, it: any) => {
+          const line = it.price * it.quantity;
+          return sum + (line - (it.discountAmount || 0));
+        }, 0);
+        current.total = itemsTotal + (current.deliveryFee || 0);
+        current.markModified("items");
+
+        try {
+          updatedOrder = await current.save();
+        } catch (saveErr: any) {
+          if (saveErr?.name === "VersionError" && attempt < 2) {
+            continue; // reload latest version and reapply on next loop
+          }
+          throw saveErr;
+        }
       }
 
-      // Recompute order total from all line items minus their own discounts,
-      // plus delivery fee if present.
-      const itemsTotal = order.items.reduce((sum: number, it: any) => {
-        const line = it.price * it.quantity;
-        return sum + (line - (it.discountAmount || 0));
-      }, 0);
-      order.total = itemsTotal + (order.deliveryFee || 0);
-      order.markModified("items");
-      await order.save();
       notifyClients();
-      return NextResponse.json(order);
+      return NextResponse.json(updatedOrder);
     }
 
     // Auto-stamp when status or paymentStatus changes

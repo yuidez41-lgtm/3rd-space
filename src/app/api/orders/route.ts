@@ -443,6 +443,14 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.cashAmount === "number") update.cashAmount = body.cashAmount;
   if (typeof body.gcashAmount === "number")
     update.gcashAmount = body.gcashAmount;
+  if (body.discountName !== undefined) update.discountName = body.discountName;
+  if (typeof body.discountPct === "number")
+    update.discountPct = body.discountPct;
+  if (typeof body.discountAmount === "number")
+    update.discountAmount = body.discountAmount;
+  if (typeof body.originalTotal === "number")
+    update.originalTotal = body.originalTotal;
+  if (typeof body.total === "number") update.total = body.total;
 
   if (!Object.keys(update).length) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
