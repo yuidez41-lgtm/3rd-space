@@ -13,7 +13,7 @@ const OrderItemCustomizationSchema = new Schema(
 );
 
 const OrderItemSchema = new Schema({
-  menuItemId: { type: String, required: true },
+  menuItemId: { type: String, default: "" },
   name: { type: String, required: true },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true },

@@ -195,6 +195,12 @@ export async function PATCH(
           if (saveErr?.name === "VersionError" && attempt < 2) {
             continue; // reload latest version and reapply on next loop
           }
+          console.error(
+            "[itemDiscount save failed]",
+            saveErr?.name,
+            saveErr?.message,
+            saveErr?.errors ? Object.keys(saveErr.errors) : undefined,
+          );
           throw saveErr;
         }
       }
