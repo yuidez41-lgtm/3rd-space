@@ -1916,7 +1916,7 @@ function GenericOptionsSheet({
   };
 
   const canAdd = groups
-    .filter((g) => g.required)
+    .filter((g) => g.required || g.type === "single")
     .every((g) => (selections[g.name]?.size || 0) > 0);
 
   const handleAdd = () => {
