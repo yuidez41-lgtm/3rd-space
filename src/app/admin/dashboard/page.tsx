@@ -10509,6 +10509,9 @@ ${row("Gross sales", fmt(totalRevenue + totalDiscount))}
                 closedReport={closedTodayReport}
                 lastShiftReport={lastShiftReportToday}
                 menuItems={menuItems}
+                shiftStartingCash={shiftStartingCash}
+                liveCashLog={liveCashLog}
+                cashDataLoaded={cashDataLoaded}
                 onPrintDayReport={() =>
                   printDailyReport(displayedReports, historyDateLabel)
                 }
