@@ -8079,6 +8079,7 @@ function TodayReport({
   menuItems,
   shiftStartingCash = 0,
   liveCashLog = { paidInTotal: 0, paidOutTotal: 0 },
+  cashDataLoaded = true,
   onPrintDayReport,
 }: {
   orders: Order[];
@@ -8089,6 +8090,7 @@ function TodayReport({
   menuItems?: MenuItem[];
   shiftStartingCash?: number;
   liveCashLog?: { paidInTotal: number; paidOutTotal: number };
+  cashDataLoaded?: boolean;
   onPrintDayReport?: () => void;
 }) {
   const today = new Date();
@@ -9266,6 +9268,18 @@ ${cashReconRows}
             ──Cash Management
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {!cashDataLoaded && (
+              <p
+                style={{
+                  color: T.muted,
+                  fontSize: 11,
+                  fontStyle: "italic",
+                  marginBottom: 2,
+                }}
+              >
+                Loading cash data…
+              </p>
+            )}
             {[
               {
                 label: "Starting Cash",
@@ -9297,17 +9311,20 @@ ${cashReconRows}
                 <span
                   style={{
                     fontFamily: "'Cinzel',serif",
-                    color: s.color,
+                    color: cashDataLoaded ? s.color : T.muted,
                     fontSize: 13,
                     fontWeight: 700,
                   }}
                 >
-                  {s.sign === "-" && s.value > 0
-                    ? "-"
-                    : s.sign === "+" && s.value > 0
-                      ? "+"
-                      : ""}
-                  {fmt(s.value)}
+                  {!cashDataLoaded
+                    ? "…"
+                    : `${
+                        s.sign === "-" && s.value > 0
+                          ? "-"
+                          : s.sign === "+" && s.value > 0
+                            ? "+"
+                            : ""
+                      }${fmt(s.value)}`}
                 </span>
               </div>
             ))}
@@ -9327,17 +9344,19 @@ ${cashReconRows}
               <span
                 style={{
                   fontFamily: "'Cinzel',serif",
-                  color: T.gold,
+                  color: cashDataLoaded ? T.gold : T.muted,
                   fontSize: 15,
                   fontWeight: 700,
                 }}
               >
-                {fmt(
-                  shiftStartingCash +
-                    cashRev +
-                    liveCashLog.paidInTotal -
-                    liveCashLog.paidOutTotal,
-                )}
+                {!cashDataLoaded
+                  ? "…"
+                  : fmt(
+                      shiftStartingCash +
+                        cashRev +
+                        liveCashLog.paidInTotal -
+                        liveCashLog.paidOutTotal,
+                    )}
               </span>
             </div>
           </div>
@@ -9359,6 +9378,7 @@ function AnalyticsTab({
   activeShiftOpenedAt,
   shiftStartingCash = 0,
   liveCashLog = { paidInTotal: 0, paidOutTotal: 0 },
+  cashDataLoaded = true,
 }: {
   orders: Order[];
   dailyReports: DailyReport[];
@@ -9369,6 +9389,7 @@ function AnalyticsTab({
   activeShiftOpenedAt?: string | null;
   shiftStartingCash?: number;
   liveCashLog?: { paidInTotal: number; paidOutTotal: number };
+  cashDataLoaded?: boolean;
 }) {
   const w = useWindowWidth();
   const isMobile = w < 640;
@@ -9672,6 +9693,7 @@ ${row("Gross sales", fmt(totalRevenue + totalDiscount))}
           menuItems={menuItems}
           shiftStartingCash={shiftStartingCash}
           liveCashLog={liveCashLog}
+          cashDataLoaded={cashDataLoaded}
           onPrintDayReport={() =>
             printDailyReport(displayedReports, historyDateLabel)
           }
@@ -16119,6 +16141,13 @@ export default function AdminDashboard() {
     (window as any).__3s_shiftLabel = shiftLabel;
   }, [shiftLabel]);
   const [shiftStartingCash, setShiftStartingCash] = useState(0);
+  // Tracks whether the shop-status + cash-log fetches have actually
+  // resolved at least once. Without this, the Cash Management card shows
+  // ₱0.00 for Starting Cash/Paid In/Paid Out from the moment the page
+  // mounts — indistinguishable from a real zero — until the async fetches
+  // finish. On a slow/flaky Mongo connection that gap can be many seconds,
+  // making the panel look broken when it's just not loaded yet.
+  const [cashDataLoaded, setCashDataLoaded] = useState(false);
   const [shiftReports, setShiftReports] = useState<ShiftReport[]>([]);
   const [liveCashLog, setLiveCashLog] = useState<{
     paidInTotal: number;
@@ -16469,7 +16498,7 @@ export default function AdminDashboard() {
         );
         setLiveCashLog({ paidInTotal, paidOutTotal });
       })
-      .catch(() => {});
+      .catch((e) => console.error("[cash-log fetch]", e));
   }
 
   const isAdmin = role === "admin";
@@ -16484,7 +16513,8 @@ export default function AdminDashboard() {
         if (d.shiftLabel) setShiftLabel(d.shiftLabel);
         if (d.startingCash) setShiftStartingCash(d.startingCash);
       })
-      .catch(() => {});
+      .catch((e) => console.error("[shop-status GET]", e))
+      .finally(() => setCashDataLoaded(true));
     fetch("/api/shift-reports")
       .then((r) => (r.ok ? r.json() : []))
       .then((data) => {
@@ -17801,6 +17831,7 @@ export default function AdminDashboard() {
             activeShiftOpenedAt={shopOpenedAt}
             shiftStartingCash={shiftStartingCash}
             liveCashLog={liveCashLog}
+            cashDataLoaded={cashDataLoaded}
           />
         ) : tab === "board" ? (
           <BoardTab posts={posts} setPosts={setPosts} />
