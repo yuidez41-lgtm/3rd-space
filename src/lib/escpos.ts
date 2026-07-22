@@ -91,13 +91,26 @@ export async function buildEscPosReceipt(order: {
     push(0x0a); // \n
   };
 
+  // A split order still has real cash changing hands whenever its cash
+  // portion is > 0 — cashReceived is passed in as the amount tendered for
+  // JUST that cash portion (see CashRegisterModal: total = isSplit ?
+  // splitCash : order.total), so this is safe for both plain-cash and
+  // split orders.
+  const hasCashPortion =
+    order.paymentMethod === "cash" ||
+    (order.paymentMethod === "split" && (order.cashReceived ?? 0) > 0);
+
   // Init printer
   push(ESC, 0x40);
 
-  // Kick open the cash drawer for cash payments.
+  // Kick open the cash drawer whenever cash actually changes hands —
+  // plain "cash" orders, AND split orders with a cash portion. Previously
+  // this only fired for paymentMethod === "cash", so a ₱50 cash / ₱50
+  // GCash split order never popped the drawer even though half the total
+  // was collected in cash.
   // ESC p m t1 t2 — sends a pulse to the drawer-kick pin (pin 2 on RJ11/RJ12).
   // Most drawers wired through the printer's cash-drawer port respond to this.
-  if (order.paymentMethod === "cash") {
+  if (hasCashPortion) {
     push(ESC, 0x70, 0x00, 0x19, 0xfa);
   }
 
@@ -190,12 +203,19 @@ export async function buildEscPosReceipt(order: {
     line(`Payment: ${order.paymentMethod.toUpperCase()}`);
   }
 
-  if (order.paymentMethod === "cash" && order.cashReceived != null) {
-    const lC = "Cash Received";
+  // Cash Received / Change — now also printed for the cash portion of a
+  // split payment, not just a pure-cash order.
+  if (hasCashPortion && order.cashReceived != null) {
+    const cashDueForPortion =
+      order.paymentMethod === "split" ? order.cashReceived : order.total;
+    const lC =
+      order.paymentMethod === "split"
+        ? "Cash Received (split)"
+        : "Cash Received";
     const rC = `P${order.cashReceived.toFixed(2)}`;
     line(lC + " ".repeat(Math.max(1, 32 - lC.length - rC.length)) + rC);
 
-    const changeAmt = order.change ?? order.cashReceived - order.total;
+    const changeAmt = order.change ?? order.cashReceived - cashDueForPortion;
     const lG = "Change";
     const rG = `P${changeAmt.toFixed(2)}`;
     push(ESC, 0x45, 0x01);

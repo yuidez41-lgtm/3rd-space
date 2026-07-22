@@ -1858,28 +1858,37 @@ function GenericOptionsSheet({
   onAdd,
   onClose,
   hiddenSubLabels,
+  livePriceByLabel,
 }: {
   item: MenuItem;
   onAdd: (customizations: SelectedCustomization[]) => void;
   onClose: () => void;
   hiddenSubLabels?: Set<string>;
+  livePriceByLabel?: Map<string, number>;
 }) {
   // Saved per-item option groups (from the admin "Edit Item" form) are a
   // frozen snapshot taken at save time — they don't auto-update when a
-  // "Substitutions" menu item gets hidden later. Strip out any choice
-  // whose label matches a currently-hidden substitution item, and drop
-  // any group left with zero choices, so hiding e.g. "Oatmilk
-  // Substitution" removes "Oat Milk" here too, not just in the live
-  // category-driven picker.
+  // "Substitutions" menu item gets hidden OR repriced later. Strip out any
+  // choice whose label matches a currently-hidden substitution item (as
+  // before), and override any remaining choice's price with the live
+  // Substitution item's current price when the labels match, so editing
+  // e.g. "Oatmilk Substitution" from ₱30 to ₱35 applies to every drink
+  // that offers "Oat Milk" as a choice, not just the legacy fallback path.
   const groups = (item.options || [])
     .map((g) => ({
       ...g,
-      choices: g.choices.filter(
-        (c) =>
-          !hiddenSubLabels?.has(
-            c.label.trim().toLowerCase().replace(/\s+/g, ""),
-          ),
-      ),
+      choices: g.choices
+        .filter(
+          (c) =>
+            !hiddenSubLabels?.has(
+              c.label.trim().toLowerCase().replace(/\s+/g, ""),
+            ),
+        )
+        .map((c) => {
+          const key = c.label.trim().toLowerCase().replace(/\s+/g, "");
+          const livePrice = livePriceByLabel?.get(key);
+          return livePrice !== undefined ? { ...c, price: livePrice } : c;
+        }),
     }))
     .filter((g) => g.choices.length > 0);
   const [selections, setSelections] = useState<Record<string, Set<string>>>(
@@ -2189,6 +2198,27 @@ function MenuScreen({
           .toLowerCase()
           .replace(/\s+/g, ""),
       ),
+  );
+
+  // Live price overrides — per-item `options.choices[].price` (set once in
+  // the admin "Edit Item" form) is a frozen snapshot and does NOT update
+  // when the "Substitutions" menu item's price is edited later. Build a
+  // normalized-label -> current-price map from the live Substitution menu
+  // items so GenericOptionsSheet can override the frozen price at render
+  // time, the same way hiddenSubLabels already overrides visibility.
+  const liveSubPriceByLabel = new Map<string, number>(
+    menuItems
+      .filter((i: MenuItem) =>
+        i.category.toLowerCase().includes("substitution"),
+      )
+      .map((i: MenuItem) => [
+        i.name
+          .replace(/substitution/i, "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, ""),
+        i.price,
+      ]),
   );
 
   const ITEM_VARIANTS: Record<string, { label: string; price?: number }[]> = {
@@ -2810,6 +2840,7 @@ function MenuScreen({
           item={genericOptionsItem}
           onClose={() => setGenericOptionsItem(null)}
           hiddenSubLabels={hiddenSubLabels}
+          livePriceByLabel={liveSubPriceByLabel}
           onAdd={(customizations) => {
             onAddToCart(genericOptionsItem, customizations);
             setGenericOptionsItem(null);

@@ -58,6 +58,70 @@ function kickCashDrawer() {
   }
 }
 
+// Paid In/Out slip — embeds the drawer-kick command in the SAME byte
+// buffer as the printed slip (same fix pattern as buildEscPosReceipt for
+// cash orders). Firing kickCashDrawer() and a receipt separately sends two
+// competing rawbt: intent URLs and RawBT silently drops one of them — so
+// this always sends exactly one combined rawbt: URL per Paid In/Out entry.
+function buildCashLogReceiptBytes(entry: {
+  type: "in" | "out";
+  amount: number;
+  note: string;
+  staffName: string;
+  at: string;
+  totalIn: number;
+  totalOut: number;
+}): Uint8Array {
+  const enc = new TextEncoder();
+  const line = (s = "") => enc.encode(s + "\n");
+  const init = new Uint8Array([0x1b, 0x40]);
+  const center = new Uint8Array([0x1b, 0x61, 0x01]);
+  const left = new Uint8Array([0x1b, 0x61, 0x00]);
+  const boldOn = new Uint8Array([0x1b, 0x45, 0x01]);
+  const boldOff = new Uint8Array([0x1b, 0x45, 0x00]);
+  const cut = new Uint8Array([0x1d, 0x56, 0x42, 0x00]);
+  const drawerKick = buildDrawerKickBytes();
+
+  const dateStr = new Date(entry.at).toLocaleString("en-PH", {
+    timeZone: "Asia/Manila",
+  });
+
+  const parts: Uint8Array[] = [
+    init,
+    center,
+    boldOn,
+    line("3RD SPACE"),
+    boldOff,
+    line(entry.type === "out" ? "PAID OUT SLIP" : "PAID IN SLIP"),
+    line("--------------------------------"),
+    left,
+    line(`Date:  ${dateStr}`),
+    line(`Staff: ${entry.staffName}`),
+    line(""),
+    boldOn,
+    line(`${entry.type === "out" ? "-" : "+"} ${fmt(entry.amount)}`),
+    boldOff,
+    line(`Note:  ${entry.note}`),
+    line("--------------------------------"),
+    line(`Total In:  ${fmt(entry.totalIn)}`),
+    line(`Total Out: ${fmt(entry.totalOut)}`),
+    line(""),
+    line(""),
+    line(""),
+    cut,
+    drawerKick,
+  ];
+
+  const totalLen = parts.reduce((s, p) => s + p.length, 0);
+  const out = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const p of parts) {
+    out.set(p, offset);
+    offset += p.length;
+  }
+  return out;
+}
+
 const T = {
   bg: "#0a0f0a",
   bgCard: "rgba(255,255,255,0.035)",
@@ -15030,6 +15094,7 @@ function CashLogModal({
   async function submit() {
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return;
+    if (!note.trim()) return;
     setSaving(true);
     try {
       const res = await fetch("/api/shop-status/cash-log", {
@@ -15039,9 +15104,26 @@ function CashLogModal({
       });
       if (res.ok) {
         const d = await res.json();
-        setPaidIn(d.paidIn || []);
-        setPaidOut(d.paidOut || []);
-        kickCashDrawer();
+        const newIn = d.paidIn || [];
+        const newOut = d.paidOut || [];
+        setPaidIn(newIn);
+        setPaidOut(newOut);
+        // Single combined rawbt: URL — slip text + drawer kick in one
+        // buffer, so RawBT can't drop either half.
+        try {
+          const bytes = buildCashLogReceiptBytes({
+            type,
+            amount: amt,
+            note,
+            staffName,
+            at: new Date().toISOString(),
+            totalIn: newIn.reduce((s: number, e: any) => s + e.amount, 0),
+            totalOut: newOut.reduce((s: number, e: any) => s + e.amount, 0),
+          });
+          window.location.href = escPosToRawBtUrl(bytes);
+        } catch {
+          // no-op if RawBT isn't reachable — never block the actual log entry
+        }
         onLogged?.(type, amt);
         setAmount("");
         setNote("");
@@ -15199,16 +15281,18 @@ function CashLogModal({
               marginBottom: 6,
             }}
           >
-            NOTE (e.g. "bought ice", "owner remittance")
+            NOTE — REQUIRED (e.g. "bought ice", "owner remittance")
           </label>
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="What's this for?"
+            placeholder="What's this for? (required)"
             style={{
               width: "100%",
               background: "rgba(255,255,255,0.04)",
-              border: `1px solid ${T.border}`,
+              border: `1px solid ${
+                !note.trim() ? "rgba(239,68,68,0.35)" : T.border
+              }`,
               borderRadius: 8,
               padding: "9px 12px",
               color: T.cream,
@@ -15221,30 +15305,39 @@ function CashLogModal({
 
         <button
           onClick={submit}
-          disabled={!amount || parseFloat(amount) <= 0 || saving}
+          disabled={
+            !amount || parseFloat(amount) <= 0 || !note.trim() || saving
+          }
           style={{
             width: "100%",
             padding: "11px",
             background:
-              amount && parseFloat(amount) > 0
+              amount && parseFloat(amount) > 0 && note.trim()
                 ? type === "out"
                   ? "rgba(239,68,68,0.6)"
                   : T.green
                 : "rgba(255,255,255,0.05)",
             border: "none",
             borderRadius: 10,
-            color: amount && parseFloat(amount) > 0 ? "#0a0f0a" : T.muted,
+            color:
+              amount && parseFloat(amount) > 0 && note.trim()
+                ? "#0a0f0a"
+                : T.muted,
             fontFamily: "'Cinzel',serif",
             fontSize: 12,
             fontWeight: 700,
             letterSpacing: ".08em",
             cursor:
-              amount && parseFloat(amount) > 0 ? "pointer" : "not-allowed",
+              amount && parseFloat(amount) > 0 && note.trim()
+                ? "pointer"
+                : "not-allowed",
           }}
         >
           {saving
             ? "SAVING…"
-            : `LOG ${type === "out" ? "PAID OUT" : "PAID IN"}`}
+            : !note.trim()
+              ? "NOTE REQUIRED"
+              : `LOG ${type === "out" ? "PAID OUT" : "PAID IN"}`}
         </button>
 
         <div
