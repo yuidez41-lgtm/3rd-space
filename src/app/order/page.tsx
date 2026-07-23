@@ -3655,12 +3655,15 @@ function TablePicker({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/orders")
+    fetch("/api/orders?status=pending")
       .then((r) => r.json())
-      .then((orders: any[]) => {
-        const active = orders.filter(
-          (o) => o.status !== "completed" && o.status !== "cancelled",
-        );
+      .then(async (pending: any[]) => {
+        const [confirmed, preparing, ready] = await Promise.all([
+          fetch("/api/orders?status=confirmed").then((r) => r.json()),
+          fetch("/api/orders?status=preparing").then((r) => r.json()),
+          fetch("/api/orders?status=ready").then((r) => r.json()),
+        ]);
+        const active = [...pending, ...confirmed, ...preparing, ...ready];
         const tables = new Set(
           active.map((o) => String(o.tableNumber)).filter(Boolean),
         );

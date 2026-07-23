@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     if (to) query.createdAt.$lte = new Date(to);
   }
 
-  const orders = await Order.find(query).sort({ createdAt: -1 });
+  const orders = await Order.find(query).sort({ createdAt: -1 }).lean();
   return NextResponse.json(orders);
 }
 
