@@ -49,10 +49,25 @@ import {
 function buildDrawerKickBytes(): Uint8Array {
   return new Uint8Array([0x1b, 0x70, 0x00, 0x19, 0xfa]);
 }
+
+// Use a hidden <a> click instead of window.location.href for rawbt: URLs.
+// window.location.href triggers a real navigation event on Android — the
+// browser leaves the page, gets bounced back by the OS, causing the hiccup
+// / back-and-forth glitch seen on the POS tablet. A programmatic anchor
+// click fires the intent without any navigation side-effect.
+function openRawBtUrl(url: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => document.body.removeChild(a), 500);
+}
+
 function kickCashDrawer() {
   try {
     const url = escPosToRawBtUrl(buildDrawerKickBytes());
-    window.location.href = url;
+    openRawBtUrl(url);
   } catch {
     // no-op if RawBT isn't reachable — never block the actual transaction
   }
@@ -3276,7 +3291,7 @@ function OrderCard({
         change: extra?.change,
       });
       const url = escPosToRawBtUrl(receiptBytes);
-      window.location.href = url;
+      openRawBtUrl(url);
       if (i < copies - 1) await new Promise((r) => setTimeout(r, 1200));
     }
   }
@@ -15145,7 +15160,7 @@ function CashLogModal({
             totalIn: newIn.reduce((s: number, e: any) => s + e.amount, 0),
             totalOut: newOut.reduce((s: number, e: any) => s + e.amount, 0),
           });
-          window.location.href = escPosToRawBtUrl(bytes);
+          openRawBtUrl(escPosToRawBtUrl(bytes));
         } catch {
           // no-op if RawBT isn't reachable — never block the actual log entry
         }
