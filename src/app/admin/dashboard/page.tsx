@@ -55,7 +55,22 @@ function buildDrawerKickBytes(): Uint8Array {
 // browser leaves the page, gets bounced back by the OS, causing the hiccup
 // / back-and-forth glitch seen on the POS tablet. A programmatic anchor
 // click fires the intent without any navigation side-effect.
+//
+// RawBT is an Android-only app, so the rawbt: scheme is never registered
+// on desktop Chrome (or iOS/etc). Attempting the intent there is harmless
+// but always logs "Failed to launch ... scheme does not have a registered
+// handler" to the console — noisy during local/dev testing on a laptop.
+// Skip the attempt entirely off-Android so that error simply never fires;
+// on the actual café tablet (Android + RawBT installed) this still runs
+// exactly as before.
+function isAndroid(): boolean {
+  return (
+    typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
+  );
+}
+
 function openRawBtUrl(url: string) {
+  if (!isAndroid()) return;
   const a = document.createElement("a");
   a.href = url;
   a.style.display = "none";
@@ -16193,6 +16208,13 @@ export default function AdminDashboard() {
   } | null>(null);
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
   const discountBusyRef = useRef<Set<string>>(new Set());
+  // Order IDs with a PATCH currently in flight (status change, payment
+  // confirm, etc). The 8s background poll skips these when merging server
+  // data — otherwise a poll landing between "optimistic update" and "PATCH
+  // actually committed" snaps the order back to its pre-update state (e.g.
+  // a completed order flashing back to "ready") even though the PATCH goes
+  // through a moment later.
+  const pendingMutationsRef = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -16350,7 +16372,8 @@ export default function AdminDashboard() {
       discountBusyRef.current.delete(busyKey);
       return;
     }
-    const prevOrders = orders;
+    const prevOrder = target;
+    pendingMutationsRef.current.add(orderId);
     const item = target.items[itemIndex];
     const lineTotal = item.price * item.quantity;
     const discountAmount = Math.round(lineTotal * discountPct) / 100;
@@ -16385,10 +16408,11 @@ export default function AdminDashboard() {
       const updated = await res.json();
       setOrders((p) => p.map((o) => (o._id === orderId ? updated : o)));
     } catch {
-      setOrders(prevOrders);
+      setOrders((p) => p.map((o) => (o._id === orderId ? prevOrder : o)));
       showToast("Failed to apply discount", false);
     } finally {
       discountBusyRef.current.delete(busyKey);
+      pendingMutationsRef.current.delete(orderId);
     }
   }
 
@@ -16397,7 +16421,8 @@ export default function AdminDashboard() {
     if (discountBusyRef.current.has(busyKey)) return;
     discountBusyRef.current.add(busyKey);
 
-    const prevOrders = orders;
+    const prevOrder = orders.find((o) => o._id === orderId);
+    pendingMutationsRef.current.add(orderId);
     setOrders((p) =>
       p.map((o) => {
         if (o._id !== orderId) return o;
@@ -16431,10 +16456,13 @@ export default function AdminDashboard() {
       const updated = await res.json();
       setOrders((p) => p.map((o) => (o._id === orderId ? updated : o)));
     } catch {
-      setOrders(prevOrders);
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === orderId ? prevOrder : o)));
+      }
       showToast("Failed to remove discount", false);
     } finally {
       discountBusyRef.current.delete(busyKey);
+      pendingMutationsRef.current.delete(orderId);
     }
   }
 
@@ -16746,7 +16774,18 @@ export default function AdminDashboard() {
           );
         }
         prevOrderIdsRef.current = new Set(fetched.map((o) => o._id));
-        setOrders(fetched);
+        // Don't let a poll overwrite an order that has a PATCH in flight —
+        // the server response here may still be pre-mutation (see
+        // pendingMutationsRef comment above). Keep the local optimistic
+        // version for those IDs; the next poll after the PATCH resolves
+        // will pick up the real server state normally.
+        setOrders((prev) =>
+          fetched.map((o) => {
+            if (!pendingMutationsRef.current.has(o._id)) return o;
+            const local = prev.find((p) => p._id === o._id);
+            return local ?? o;
+          }),
+        );
       }
     } catch (e) {
       console.error(e);
@@ -16760,7 +16799,8 @@ export default function AdminDashboard() {
     status: OrderStatus,
     reason?: string,
   ) {
-    const prevOrders = orders;
+    const prevOrder = orders.find((o) => o._id === id);
+    pendingMutationsRef.current.add(id);
     setOrders((p) =>
       p.map((o) =>
         o._id === id
@@ -16779,14 +16819,21 @@ export default function AdminDashboard() {
       });
       if (!res.ok) throw new Error(await res.text());
     } catch (e) {
-      setOrders(prevOrders);
+      // Scoped rollback — see confirmCashPayment for why a full-list
+      // snapshot here would be unsafe.
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === id ? prevOrder : o)));
+      }
       showToast("Failed to update order status", false);
       console.error(e);
+    } finally {
+      pendingMutationsRef.current.delete(id);
     }
   }
 
   async function updateItems(id: string, items: OrderItem[], total: number) {
-    const prevOrders = orders;
+    const prevOrder = orders.find((o) => o._id === id);
+    pendingMutationsRef.current.add(id);
     setOrders((p) => p.map((o) => (o._id === id ? { ...o, items, total } : o)));
     showToast("Order items updated ✓");
     try {
@@ -16797,14 +16844,19 @@ export default function AdminDashboard() {
       });
       if (!res.ok) throw new Error(await res.text());
     } catch (e) {
-      setOrders(prevOrders);
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === id ? prevOrder : o)));
+      }
       showToast("Failed to update items", false);
       console.error(e);
+    } finally {
+      pendingMutationsRef.current.delete(id);
     }
   }
 
   async function confirmPayment(id: string) {
-    const prevOrders = orders;
+    const prevOrder = orders.find((o) => o._id === id);
+    pendingMutationsRef.current.add(id);
     setOrders((p) =>
       p.map((o) => (o._id === id ? { ...o, paymentStatus: "confirmed" } : o)),
     );
@@ -16816,9 +16868,14 @@ export default function AdminDashboard() {
         body: JSON.stringify({ paymentStatus: "confirmed" }),
       });
       if (!res.ok) throw new Error(await res.text());
-    } catch {
-      setOrders(prevOrders);
+    } catch (e) {
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === id ? prevOrder : o)));
+      }
+      console.error("confirmPayment failed:", e);
       showToast("Failed to confirm payment", false);
+    } finally {
+      pendingMutationsRef.current.delete(id);
     }
   }
 
@@ -16827,9 +16884,10 @@ export default function AdminDashboard() {
     cashReceived: number,
     change: number,
   ) {
-    const prevOrders = orders;
     const target = orders.find((o) => o._id === id);
+    const prevOrder = target; // snapshot of just THIS order, for a scoped rollback
     const keepMethod = target?.paymentMethod === "split" ? "split" : "cash";
+    pendingMutationsRef.current.add(id);
     setOrders((p) =>
       p.map((o) =>
         o._id === id
@@ -16856,15 +16914,24 @@ export default function AdminDashboard() {
         }),
       });
       if (!res.ok) throw new Error(await res.text());
-    } catch {
-      setOrders(prevOrders);
+    } catch (e) {
+      // Roll back ONLY this order, not the whole list — a stale full-list
+      // snapshot here would also erase any other order's update (e.g. a
+      // status change) that succeeded while this request was in flight.
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === id ? prevOrder : o)));
+      }
+      console.error("confirmCashPayment failed:", e);
       showToast("Failed to confirm cash payment", false);
+    } finally {
+      pendingMutationsRef.current.delete(id);
     }
   }
 
   // NEW: only updates the method, does NOT mark as paid
   async function setPaymentMethod(id: string, method: "cash" | "gcash") {
-    const prevOrders = orders;
+    const prevOrder = orders.find((o) => o._id === id);
+    pendingMutationsRef.current.add(id);
     setOrders((p) =>
       p.map((o) => (o._id === id ? { ...o, paymentMethod: method } : o)),
     );
@@ -16876,9 +16943,14 @@ export default function AdminDashboard() {
         body: JSON.stringify({ paymentMethod: method }),
       });
       if (!res.ok) throw new Error(await res.text());
-    } catch {
-      setOrders(prevOrders);
+    } catch (e) {
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === id ? prevOrder : o)));
+      }
+      console.error("setPaymentMethod failed:", e);
       showToast("Failed to set payment method", false);
+    } finally {
+      pendingMutationsRef.current.delete(id);
     }
   }
 
@@ -16889,7 +16961,8 @@ export default function AdminDashboard() {
     cashAmount: number,
     gcashAmount: number,
   ) {
-    const prevOrders = orders;
+    const prevOrder = orders.find((o) => o._id === id);
+    pendingMutationsRef.current.add(id);
     setOrders((p) =>
       p.map((o) =>
         o._id === id
@@ -16911,9 +16984,14 @@ export default function AdminDashboard() {
         }),
       });
       if (!res.ok) throw new Error(await res.text());
-    } catch {
-      setOrders(prevOrders);
+    } catch (e) {
+      if (prevOrder) {
+        setOrders((p) => p.map((o) => (o._id === id ? prevOrder : o)));
+      }
+      console.error("adjustSplitPayment failed:", e);
       showToast("Failed to update payment split", false);
+    } finally {
+      pendingMutationsRef.current.delete(id);
     }
   }
 

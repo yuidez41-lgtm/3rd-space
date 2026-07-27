@@ -42,6 +42,28 @@ export async function GET(req: NextRequest) {
     if (to) query.createdAt.$lte = new Date(to);
   }
 
+  // Dashboard poll (no explicit status/date filter): don't pull the
+  // entire order history every 8s. Active orders (not yet completed/
+  // cancelled) have no natural time bound and must all come back, but
+  // terminal orders only need a recent window so today's shift report
+  // and the shift-detail modal still work without dragging in months
+  // of history on every poll.
+  const isUnfilteredPoll = !status && !from && !to;
+
+  if (isUnfilteredPoll) {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // last 24h
+    const orders = await Order.find({
+      archived: { $ne: true },
+      $or: [
+        { status: { $nin: ["completed", "cancelled"] } },
+        { createdAt: { $gte: cutoff } },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+    return NextResponse.json(orders);
+  }
+
   const orders = await Order.find(query).sort({ createdAt: -1 }).lean();
   return NextResponse.json(orders);
 }
