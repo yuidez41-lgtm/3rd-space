@@ -3263,6 +3263,7 @@ function OrderCard({
   const [open, setOpen] = useState(false);
   const [receiptSrc, setReceiptSrc] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [advancing, setAdvancing] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showCashRegister, setShowCashRegister] = useState(false);
   const [showEditItems, setShowEditItems] = useState(false);
@@ -5084,28 +5085,35 @@ function OrderCard({
               )}
               {nextStatus && (
                 <button
+                  disabled={advancing}
                   onClick={async (e) => {
                     e.stopPropagation();
+                    if (advancing) return;
+                    setAdvancing(true);
                     const shouldPrint =
                       order.status === "pending" &&
                       order.paymentStatus !== "confirmed";
                     await onStatusChange(order._id, nextStatus);
                     if (shouldPrint) printReceipt(2);
+                    setAdvancing(false);
                   }}
                   style={{
                     flex: 1,
                     minWidth: 130,
                     padding: "9px 12px",
-                    background: STATUS_CFG[nextStatus].color + "18",
-                    border: `1px solid ${STATUS_CFG[nextStatus].color}44`,
-                    color: STATUS_CFG[nextStatus].color,
+                    background: advancing
+                      ? "rgba(255,255,255,0.05)"
+                      : STATUS_CFG[nextStatus].color + "18",
+                    border: `1px solid ${advancing ? T.border : STATUS_CFG[nextStatus].color + "44"}`,
+                    color: advancing ? T.muted : STATUS_CFG[nextStatus].color,
                     borderRadius: 8,
                     fontSize: 12,
                     fontWeight: 700,
-                    cursor: "pointer",
+                    cursor: advancing ? "wait" : "pointer",
+                    opacity: advancing ? 0.6 : 1,
                   }}
                 >
-                  → {STATUS_CFG[nextStatus].label}
+                  {advancing ? "…" : `→ ${STATUS_CFG[nextStatus].label}`}
                 </button>
               )}
               {order.status !== "cancelled" && order.status !== "completed" && (
@@ -15163,8 +15171,15 @@ function CashLogModal({
         onLogged?.(type, amt);
         setAmount("");
         setNote("");
+      } else {
+        const errText = await res.text().catch(() => "");
+        alert(
+          `Failed to save cash log entry (${res.status})${errText ? `: ${errText}` : ""}. Please try again.`,
+        );
       }
-    } catch {}
+    } catch {
+      alert("Network error — cash log entry was not saved. Please try again.");
+    }
     setSaving(false);
   }
 
@@ -16179,6 +16194,7 @@ export default function AdminDashboard() {
   const prevOrderIdsRef = useRef<Set<string>>(new Set());
   const discountBusyRef = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const unlock = () => {
@@ -16494,8 +16510,9 @@ export default function AdminDashboard() {
   }
 
   function showToast(msg: string, ok = true) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3000);
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }
 
   function fetchLiveCashLog() {
@@ -16664,20 +16681,19 @@ export default function AdminDashboard() {
   async function fetchData(silent = false): Promise<void> {
     try {
       if (!silent) setLoading(true);
-      const [oRes, sRes] = await Promise.all([
+      const [oRes, sRes, mRes] = await Promise.all([
         fetch("/api/orders"),
         fetch("/api/shop-status"),
+        fetch("/api/menu"),
       ]);
+      // Always update menu so availability changes show without a hard reload
+      if (mRes.ok) setMenuItems(await mRes.json());
       if (!silent) {
-        const [mRes, srRes] = await Promise.all([
-          fetch("/api/menu"),
-          fetch("/api/shift-reports"),
-        ]);
+        const srRes = await fetch("/api/shift-reports");
         if (srRes.ok) {
           const srData = await srRes.json();
           if (Array.isArray(srData)) setShiftReports(srData);
         }
-        if (mRes.ok) setMenuItems(await mRes.json());
         fetchLiveCashLog();
       }
       if (sRes.ok) {
