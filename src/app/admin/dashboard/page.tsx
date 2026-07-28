@@ -3293,22 +3293,38 @@ function OrderCard({
     copies = 1,
     extra?: { cashReceived?: number; change?: number },
   ) {
-    for (let i = 0; i < copies; i++) {
-      const receiptBytes = await buildEscPosReceipt({
-        orderNumber: order.orderNumber,
-        type: order.type,
-        tableNumber: order.tableNumber,
-        customerName: order.customerName,
-        items: order.items,
-        total: order.total,
-        deliveryFee: (order as any).deliveryFee,
-        paymentMethod: order.paymentMethod,
-        cashReceived: extra?.cashReceived,
-        change: extra?.change,
-      });
-      const url = escPosToRawBtUrl(receiptBytes);
-      openRawBtUrl(url);
-      if (i < copies - 1) await new Promise((r) => setTimeout(r, 1200));
+    try {
+      for (let i = 0; i < copies; i++) {
+        const receiptBytes = await buildEscPosReceipt({
+          orderNumber: order.orderNumber,
+          type: order.type,
+          tableNumber: order.tableNumber,
+          customerName: order.customerName,
+          items: order.items,
+          total: order.total,
+          deliveryFee: (order as any).deliveryFee,
+          paymentMethod: order.paymentMethod,
+          cashReceived: extra?.cashReceived,
+          change: extra?.change,
+        });
+        const url = escPosToRawBtUrl(receiptBytes);
+        openRawBtUrl(url);
+        if (i < copies - 1) await new Promise((r) => setTimeout(r, 1200));
+      }
+    } catch (e) {
+      // Previously any failure here (e.g. the receipt logo failing to
+      // load/rasterize) died silently — nothing printed, drawer never
+      // kicked, and staff had no way to know why the button "did nothing."
+      console.error("[printReceipt]", e);
+      // showToast() lives on the outer dashboard component, not here —
+      // OrderCard can't call it directly, so notify via a window event
+      // and let the dashboard's listener (added near showToast's
+      // definition) show the actual toast.
+      window.dispatchEvent(
+        new CustomEvent("3rdspace:toast", {
+          detail: { msg: "Print failed — tap Receipt again", ok: false },
+        }),
+      );
     }
   }
 
@@ -16542,6 +16558,18 @@ export default function AdminDashboard() {
     setToast({ msg, ok });
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   }
+
+  // OrderCard (a separate component, out of scope for showToast above)
+  // dispatches this event when a print fails so staff actually see why
+  // the Receipt button "did nothing" instead of it failing silently.
+  useEffect(() => {
+    function handleToastEvent(e: Event) {
+      const { msg, ok } = (e as CustomEvent).detail || {};
+      if (msg) showToast(msg, ok);
+    }
+    window.addEventListener("3rdspace:toast", handleToastEvent);
+    return () => window.removeEventListener("3rdspace:toast", handleToastEvent);
+  }, []);
 
   function fetchLiveCashLog() {
     fetch("/api/shop-status/cash-log")

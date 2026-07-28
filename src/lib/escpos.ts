@@ -61,6 +61,35 @@ export async function imageUrlToEscPosRaster(
   return [GS, 0x76, 0x30, 0x00, wL, wH, hL, hH, ...bitmap];
 }
 
+let cachedLogoBytes: number[] | null = null;
+let cachedLogoPromise: Promise<number[]> | null = null;
+
+// Fetch + rasterize the logo once and reuse it for every receipt after
+// that. Also swallow failures here (flaky wifi, slow cold start, CDN
+// hiccup) instead of letting them kill the whole receipt build — a
+// logo-less receipt that still prints and still kicks the drawer beats a
+// silent no-op on the tablet. Failure isn't cached, so the next print
+// retries the fetch.
+async function getLogoBytes(): Promise<number[]> {
+  if (cachedLogoBytes) return cachedLogoBytes;
+  if (!cachedLogoPromise) {
+    cachedLogoPromise = imageUrlToEscPosRaster(
+      `${window.location.origin}/logo-receipt.png`,
+      120,
+    )
+      .then((bytes) => {
+        cachedLogoBytes = bytes;
+        return bytes;
+      })
+      .catch((e) => {
+        console.error("[receipt logo] failed to load, skipping", e);
+        cachedLogoPromise = null;
+        return [];
+      });
+  }
+  return cachedLogoPromise;
+}
+
 export async function buildEscPosReceipt(order: {
   orderNumber: string;
   type: "delivery" | "dine-in" | "takeout";
@@ -91,11 +120,6 @@ export async function buildEscPosReceipt(order: {
     push(0x0a); // \n
   };
 
-  // A split order still has real cash changing hands whenever its cash
-  // portion is > 0 — cashReceived is passed in as the amount tendered for
-  // JUST that cash portion (see CashRegisterModal: total = isSplit ?
-  // splitCash : order.total), so this is safe for both plain-cash and
-  // split orders.
   const hasCashPortion =
     order.paymentMethod === "cash" ||
     (order.paymentMethod === "split" && (order.cashReceived ?? 0) > 0);
@@ -103,13 +127,6 @@ export async function buildEscPosReceipt(order: {
   // Init printer
   push(ESC, 0x40);
 
-  // Kick open the cash drawer whenever cash actually changes hands —
-  // plain "cash" orders, AND split orders with a cash portion. Previously
-  // this only fired for paymentMethod === "cash", so a ₱50 cash / ₱50
-  // GCash split order never popped the drawer even though half the total
-  // was collected in cash.
-  // ESC p m t1 t2 — sends a pulse to the drawer-kick pin (pin 2 on RJ11/RJ12).
-  // Most drawers wired through the printer's cash-drawer port respond to this.
   if (hasCashPortion) {
     push(ESC, 0x70, 0x00, 0x19, 0xfa);
   }
@@ -117,27 +134,15 @@ export async function buildEscPosReceipt(order: {
   // Center align
   push(ESC, 0x61, 0x01);
 
-  // Logo image instead of plain "3RD SPACE" text
-  // NOTE: uses a dedicated small receipt-only logo (logo-receipt.png), not the
-  // main site logo.png, and is capped at 120px wide. Keeping this image small
-  // and fixed-size matters: the whole receipt (this bitmap + all text) gets
-  // base64-encoded into a single rawbt:base64,... URL handed to
-  // window.location.href. Custom-scheme URIs have undocumented but real length
-  // limits on Android/WebView — if the payload is too long it gets silently
-  // truncated, and the printer feeds partway through the stream then stalls.
-  // Do not swap in a bigger/different image here without keeping the final
-  // encoded payload comfortably under a few thousand characters.
-  const logoBytes = await imageUrlToEscPosRaster(
-    `${window.location.origin}/logo-receipt.png`,
-    120,
-  );
-  push(...logoBytes);
-  push(0x0a); // feed one line after the image
+  const logoBytes = await getLogoBytes();
+  if (logoBytes.length > 0) {
+    push(...logoBytes);
+    push(0x0a); // feed one line after the image
+  }
 
   line("OFFICIAL RECEIPT");
   line("--------------------------------");
 
-  // Order number, bold
   push(ESC, 0x45, 0x01);
   line(`#${order.orderNumber}`);
   push(ESC, 0x45, 0x00);
@@ -162,7 +167,6 @@ export async function buildEscPosReceipt(order: {
 
   if (order.customerName) line(order.customerName);
 
-  // Left align for item list
   push(ESC, 0x61, 0x00);
   line("--------------------------------");
 
@@ -192,7 +196,6 @@ export async function buildEscPosReceipt(order: {
     line(l2 + " ".repeat(Math.max(1, 32 - l2.length - r2.length)) + r2);
   }
 
-  // Bold total
   push(ESC, 0x45, 0x01);
   const lT = "TOTAL";
   const rT = `P${order.total.toFixed(2)}`;
@@ -203,8 +206,6 @@ export async function buildEscPosReceipt(order: {
     line(`Payment: ${order.paymentMethod.toUpperCase()}`);
   }
 
-  // Cash Received / Change — now also printed for the cash portion of a
-  // split payment, not just a pure-cash order.
   if (hasCashPortion && order.cashReceived != null) {
     const cashDueForPortion =
       order.paymentMethod === "split" ? order.cashReceived : order.total;
