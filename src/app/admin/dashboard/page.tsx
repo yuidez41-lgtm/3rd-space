@@ -4648,6 +4648,28 @@ function OrderCard({
                   </span>
                 )}
 
+                {/* Admin override: split the payment yourself, even if the
+                    customer picked (or was recorded as) a single method */}
+                {methodKnown && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openSplitEditor();
+                    }}
+                    style={{
+                      fontSize: 11,
+                      padding: "5px 10px",
+                      borderRadius: 6,
+                      color: T.muted,
+                      background: "rgba(255,255,255,0.03)",
+                      border: `1px solid ${T.border}`,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isSplit ? "Edit Split" : "Split Payment"}
+                  </button>
+                )}
+
                 {/* GCash reference number (customer chose "Enter Reference No."
                     instead of uploading a screenshot — no image to show, so
                     surface the sender name + ref no. directly for staff to
@@ -4904,31 +4926,6 @@ function OrderCard({
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 8 }}
                 >
-                  {/* Admin override: split the payment yourself, even if the
-                      customer picked (or was recorded as) a single method.
-                      Edge case, not part of the normal flow — kept small
-                      and out of the way instead of a full button up top. */}
-                  {methodKnown && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSplitEditor();
-                      }}
-                      style={{
-                        alignSelf: "flex-end",
-                        fontSize: 10,
-                        color: T.faint,
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                        padding: 0,
-                      }}
-                    >
-                      {isSplit ? "Edit split" : "Split payment instead?"}
-                    </button>
-                  )}
-
                   {/* Step 1: If method is unknown, let staff pick it first */}
                   {methodPending && (
                     <div>
