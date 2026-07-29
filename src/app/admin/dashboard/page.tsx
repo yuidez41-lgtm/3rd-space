@@ -2045,7 +2045,7 @@ function DeliveryMapPanel({
     };
 
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, 10000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -2460,7 +2460,7 @@ function RiderTrackingButton({
       } catch {}
     };
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, 10000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -16790,14 +16790,13 @@ export default function AdminDashboard() {
 
     const poll = () => {
       fetchData(true);
-      fetchLiveCashLog();
     };
 
     poll(); // fetch immediately so it doesn't wait 8s on first load
 
     const id = setInterval(() => {
       if (document.visibilityState === "visible") poll();
-    }, 8000);
+    }, 25000);
 
     const visHandler = () => {
       if (document.visibilityState === "visible") poll();
@@ -16868,34 +16867,40 @@ export default function AdminDashboard() {
   async function fetchData(silent = false): Promise<void> {
     try {
       if (!silent) setLoading(true);
-      const [oRes, sRes, mRes] = await Promise.all([
-        fetch("/api/orders"),
-        fetch("/api/shop-status"),
-        fetch("/api/menu"),
-      ]);
+      // Single combined call — was 4 separate serverless invocations
+      // (orders, shop-status, menu, cash-log) every poll tick. See
+      // /api/dashboard-poll for why they're now folded into one request.
+      const res = await fetch("/api/dashboard-poll");
+      if (!res.ok) throw new Error(`dashboard-poll ${res.status}`);
+      const {
+        orders: fetched,
+        menuItems: fetchedMenu,
+        shopStatus: s,
+        cashLog,
+      } = await res.json();
+
       // Always update menu so availability changes show without a hard reload
-      if (mRes.ok) setMenuItems(await mRes.json());
+      setMenuItems(fetchedMenu);
+      setLiveCashLog(cashLog);
+
       if (!silent) {
         const srRes = await fetch("/api/shift-reports");
         if (srRes.ok) {
           const srData = await srRes.json();
           if (Array.isArray(srData)) setShiftReports(srData);
         }
-        fetchLiveCashLog();
       }
-      if (sRes.ok) {
-        const s = await sRes.json();
-        setShopOpen(s.open);
-        setShopOpenedAt(s.openedAt ?? null);
-        setShiftDate(s.shiftDate ?? null);
-        if (s.shiftLabel) setShiftLabel(s.shiftLabel);
-        if (typeof s.startingCash === "number")
-          setShiftStartingCash(s.startingCash);
-      }
-      if (oRes.ok) {
-        const fetched: Order[] = await oRes.json();
+
+      setShopOpen(s.open);
+      setShopOpenedAt(s.openedAt ?? null);
+      setShiftDate(s.shiftDate ?? null);
+      if (s.shiftLabel) setShiftLabel(s.shiftLabel);
+      if (typeof s.startingCash === "number")
+        setShiftStartingCash(s.startingCash);
+
+      {
         const newOrders = fetched.filter(
-          (o) =>
+          (o: Order) =>
             !prevOrderIdsRef.current.has(o._id) &&
             o.status !== "completed" &&
             o.status !== "cancelled",
@@ -16932,14 +16937,14 @@ export default function AdminDashboard() {
             `${newOrders.length} new order${newOrders.length > 1 ? "s" : ""}!`,
           );
         }
-        prevOrderIdsRef.current = new Set(fetched.map((o) => o._id));
+        prevOrderIdsRef.current = new Set(fetched.map((o: Order) => o._id));
         // Don't let a poll overwrite an order that has a PATCH in flight —
         // the server response here may still be pre-mutation (see
         // pendingMutationsRef comment above). Keep the local optimistic
         // version for those IDs; the next poll after the PATCH resolves
         // will pick up the real server state normally.
         setOrders((prev) =>
-          fetched.map((o) => {
+          fetched.map((o: Order) => {
             if (!pendingMutationsRef.current.has(o._id)) return o;
             const local = prev.find((p) => p._id === o._id);
             return local ?? o;
