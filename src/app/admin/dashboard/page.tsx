@@ -1976,7 +1976,7 @@ function CashRegisterModal({
               cursor: valid ? "pointer" : "not-allowed",
             }}
           >
-            CONFIRM & PRINT
+            CONFIRM & OPEN DRAWER
           </button>
           <button
             onClick={onCancel}
