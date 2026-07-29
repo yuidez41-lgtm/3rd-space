@@ -60,17 +60,18 @@ function buildDrawerKickBytes(): Uint8Array {
 // on desktop Chrome (or iOS/etc). Attempting the intent there is harmless
 // but always logs "Failed to launch ... scheme does not have a registered
 // handler" to the console — noisy during local/dev testing on a laptop.
-// Skip the attempt entirely off-Android so that error simply never fires;
-// on the actual café tablet (Android + RawBT installed) this still runs
-// exactly as before.
-function isAndroid(): boolean {
-  return (
-    typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
-  );
-}
-
+//
+// NOTE: we used to gate this on a strict /Android/i.test(navigator.userAgent)
+// check to suppress that console noise. That backfired on the actual café
+// tablet: its browser reports a desktop-style UA ("X11; Linux x86_64...
+// Chrome/150...") even though it's Android hardware with RawBT installed —
+// likely "Desktop site" mode or a customized UA from the tablet vendor. The
+// old check silently skipped firing the intent on that exact device, which
+// looked like "printing/drawer isn't working" with no error anywhere.
+// We now always attempt the intent. Devices without RawBT just fail
+// harmlessly (one console warning); devices with RawBT — regardless of what
+// UA string they report — actually get the print/drawer-kick.
 function openRawBtUrl(url: string) {
-  if (!isAndroid()) return;
   const a = document.createElement("a");
   a.href = url;
   a.style.display = "none";
@@ -3402,14 +3403,12 @@ function OrderCard({
           onConfirm={async (cashReceived, change) => {
             setShowCashRegister(false);
             await onCashConfirm(order._id, cashReceived, change);
-            // NOTE: no separate kickCashDrawer() call here — buildEscPosReceipt()
-            // already embeds the drawer-kick ESC command inside the receipt
-            // bytes whenever paymentMethod is "cash". Firing a standalone
-            // kickCashDrawer() AND printReceipt() back-to-back sent two
-            // competing rawbt: intent URLs via window.location.href, and
-            // RawBT/Android would only honor one of them — silently dropping
-            // the actual receipt print while still popping the drawer.
-            printReceipt(1, { cashReceived, change });
+            // Cash register confirm pops the drawer only — it no longer
+            // auto-prints a receipt here. Staff use the separate "Receipt"
+            // button on the order card to print on demand instead, so this
+            // step and printing are decoupled and don't fire two competing
+            // rawbt: intents back-to-back.
+            kickCashDrawer();
           }}
           onCancel={() => setShowCashRegister(false)}
         />

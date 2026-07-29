@@ -6892,7 +6892,7 @@ export default function OrderPage() {
     <>
       <style>{`
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { height: 100%; overflow: hidden; background: ${BG}; -webkit-text-size-adjust: 100%; }
+        html, body { min-height: 100%; overflow-y: auto; overflow-x: hidden; background: ${BG}; -webkit-text-size-adjust: 100%; }
         input::placeholder, textarea::placeholder { color: ${CF}; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
