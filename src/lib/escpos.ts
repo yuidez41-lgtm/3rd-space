@@ -67,9 +67,8 @@ let cachedLogoPromise: Promise<number[]> | null = null;
 // Fetch + rasterize the logo once and reuse it for every receipt after
 // that. Also swallow failures here (flaky wifi, slow cold start, CDN
 // hiccup) instead of letting them kill the whole receipt build — a
-// logo-less receipt that still prints and still kicks the drawer beats a
-// silent no-op on the tablet. Failure isn't cached, so the next print
-// retries the fetch.
+// logo-less receipt that still prints beats a silent no-op on the tablet.
+// Failure isn't cached, so the next print retries the fetch.
 async function getLogoBytes(): Promise<number[]> {
   if (cachedLogoBytes) return cachedLogoBytes;
   if (!cachedLogoPromise) {
@@ -109,6 +108,16 @@ export async function buildEscPosReceipt(order: {
   paymentMethod?: string;
   cashReceived?: number;
   change?: number;
+  // Opt-in only. The drawer should pop exactly once, at the moment staff
+  // actually tap "Open Cash Register" — that's a direct kickCashDrawer()
+  // call elsewhere, not this function. Every OTHER print (kitchen tickets,
+  // manual reprints from the "Receipt" button, auto-print on status
+  // advance, etc.) must NOT touch the drawer, even for cash orders. This
+  // used to be inferred automatically from paymentMethod === "cash",
+  // which meant every single print of a cash order's receipt popped the
+  // drawer — reprinting, or even just moving an order to "Preparing",
+  // would kick it. Defaults to false on purpose.
+  includeDrawerKick?: boolean;
 }): Promise<Uint8Array> {
   const ESC = 0x1b;
   const GS = 0x1d;
@@ -127,7 +136,7 @@ export async function buildEscPosReceipt(order: {
   // Init printer
   push(ESC, 0x40);
 
-  if (hasCashPortion) {
+  if (hasCashPortion && order.includeDrawerKick) {
     push(ESC, 0x70, 0x00, 0x19, 0xfa);
   }
 
