@@ -47,7 +47,13 @@ import {
 // of buildEscPosReceipt() so the drawer can be popped for ANY cash-handling
 // moment — split payments, paid in/out — not just full-cash order receipts.
 function buildDrawerKickBytes(): Uint8Array {
-  return new Uint8Array([0x1b, 0x70, 0x00, 0x19, 0xfa]);
+  // ESC @ (printer init, 0x1b 0x40) must come first — a bare 5-byte kick
+  // command with no init gets accepted/shown by RawBT's popup (so it
+  // LOOKS like it worked) but doesn't reliably reach the drawer pin.
+  // buildEscPosReceipt and buildCashLogReceiptBytes both send ESC @ before
+  // their drawer-kick bytes and that path is confirmed working — this
+  // standalone kick was missing that init and needs to match it.
+  return new Uint8Array([0x1b, 0x40, 0x1b, 0x70, 0x00, 0x19, 0xfa]);
 }
 
 // Use a hidden <a> click instead of window.location.href for rawbt: URLs.
