@@ -3402,13 +3402,18 @@ function OrderCard({
           orderNumber={order.orderNumber}
           onConfirm={async (cashReceived, change) => {
             setShowCashRegister(false);
-            await onCashConfirm(order._id, cashReceived, change);
-            // Cash register confirm pops the drawer only — it no longer
-            // auto-prints a receipt here. Staff use the separate "Receipt"
-            // button on the order card to print on demand instead, so this
-            // step and printing are decoupled and don't fire two competing
-            // rawbt: intents back-to-back.
+            // Fire the drawer kick FIRST and synchronously — before any
+            // await. Android only treats the hidden-anchor rawbt: click as
+            // a genuine user gesture if it fires within the same tick as
+            // the tap that triggered this handler. Awaiting the network
+            // call (onCashConfirm) first burns that window, so by the time
+            // kickCashDrawer() used to run, RawBT either ignored the
+            // intent or the popup had nothing left to confirm. Cash
+            // register confirm still only pops the drawer — it does not
+            // auto-print a receipt. Staff use the separate "Receipt"
+            // button on the order card to print on demand instead.
             kickCashDrawer();
+            await onCashConfirm(order._id, cashReceived, change);
           }}
           onCancel={() => setShowCashRegister(false)}
         />
