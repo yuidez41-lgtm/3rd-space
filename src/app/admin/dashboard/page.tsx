@@ -5186,11 +5186,7 @@ function OrderCard({
                     )
                       return;
                     setAdvancing(true);
-                    const shouldPrint =
-                      order.status === "pending" &&
-                      order.paymentStatus !== "confirmed";
                     await onStatusChange(order._id, nextStatus);
-                    if (shouldPrint) printReceipt(2);
                     setAdvancing(false);
                   }}
                   style={{
