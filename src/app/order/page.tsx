@@ -470,6 +470,12 @@ function CustomizationSheet({
       return next;
     });
 
+  // Sauce is required whenever this item offers a sauce choice — mirrors
+  // the "single = required" rule GenericOptionsSheet already uses for
+  // items with their own saved options, so behavior is consistent whether
+  // or not the item has custom options saved.
+  const canAdd = !config.sauces || selectedSauces.size > 0;
+
   return (
     <>
       <div
@@ -856,7 +862,7 @@ function CustomizationSheet({
                   marginBottom: 10,
                 }}
               >
-                CHOOSE YOUR SAUCE — MAX 2 (FREE)
+                CHOOSE YOUR SAUCE — REQUIRED · MAX 1 (FREE)
               </p>
               <div
                 style={{
@@ -872,15 +878,11 @@ function CustomizationSheet({
                     <button
                       key={sauceName}
                       onClick={() =>
-                        setSelectedSauces((prev) => {
-                          const n = new Set(prev);
-                          if (n.has(sauceName)) {
-                            n.delete(sauceName);
-                          } else if (n.size < 2) {
-                            n.add(sauceName);
-                          }
-                          return n;
-                        })
+                        setSelectedSauces((prev) =>
+                          prev.has(sauceName)
+                            ? new Set()
+                            : new Set([sauceName]),
+                        )
                       }
                       style={{
                         display: "flex",
@@ -1025,11 +1027,12 @@ function CustomizationSheet({
           }}
         >
           <button
-            onClick={handleAdd}
+            onClick={() => canAdd && handleAdd()}
+            disabled={!canAdd}
             style={{
               width: "100%",
-              background: G,
-              color: BG,
+              background: canAdd ? G : "rgba(212,168,67,0.25)",
+              color: canAdd ? BG : CM,
               border: "none",
               borderRadius: 12,
               padding: "15px 16px",
@@ -1037,7 +1040,7 @@ function CustomizationSheet({
               fontSize: 13,
               letterSpacing: ".12em",
               fontWeight: 700,
-              cursor: "pointer",
+              cursor: canAdd ? "pointer" : "not-allowed",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1874,9 +1877,19 @@ function GenericOptionsSheet({
   // Substitution item's current price when the labels match, so editing
   // e.g. "Oatmilk Substitution" from ₱30 to ₱35 applies to every drink
   // that offers "Oat Milk" as a choice, not just the legacy fallback path.
+  //
+  // Sauce groups get the same live override for their rules, not just
+  // their choices: items saved before Sauce became required/max-1 are
+  // still frozen at type:"multi", max:2, required:undefined from whenever
+  // they were last saved in admin. Forcing it here means every item with
+  // a Sauce group behaves correctly immediately, without needing staff to
+  // reopen and resave each item one at a time.
   const groups = (item.options || [])
     .map((g) => ({
       ...g,
+      ...(g.name.toLowerCase() === "sauce"
+        ? { type: "single" as const, required: true, max: undefined }
+        : {}),
       choices: g.choices
         .filter(
           (c) =>

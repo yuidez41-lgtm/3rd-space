@@ -596,8 +596,8 @@ function deriveLegacyOptions(item: {
   if (config?.sauces)
     groups.push({
       name: "Sauce",
-      type: "multi",
-      max: 2,
+      type: "single",
+      required: true,
       choices: config.sauces.map((s) => ({ label: s.name, price: 0 })),
     });
   if (config?.addons)
