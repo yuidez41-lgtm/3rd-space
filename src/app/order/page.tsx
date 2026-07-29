@@ -106,7 +106,7 @@ function getCategoryCustomizations(
   if (c.includes("appetizer") || c.includes("snack"))
     return {
       sauces:
-        liveSauces && liveSauces.length > 0
+        liveSauces !== undefined
           ? liveSauces
           : [
               "Garlic Mayo",
@@ -151,7 +151,7 @@ function getCategoryCustomizations(
   if (c.includes("savory"))
     return {
       eggStyles:
-        liveEggStyles && liveEggStyles.length > 0
+        liveEggStyles !== undefined
           ? liveEggStyles
           : [
               "Sunny Side Up",
@@ -2153,6 +2153,18 @@ function MenuScreen({
     )
     .map((i: MenuItem) => ({ name: i.name, image: i.image }));
 
+  // Whether any sauce/egg-style menu items were ever created at all
+  // (regardless of hidden/available). Without this, hiding every sauce
+  // item one at a time used to fall back to the hardcoded list (incl.
+  // "Honey Mustard") the moment the live list hit zero, undoing the hide
+  // instead of showing an empty list — same fix as milkSubItemsExist below.
+  const sauceItemsExist = menuItems.some((i: MenuItem) =>
+    i.category.toLowerCase().includes("sauce"),
+  );
+  const eggStyleItemsExist = menuItems.some((i: MenuItem) =>
+    i.category.toLowerCase().includes("egg style"),
+  );
+
   const milkSubItemsExist = menuItems.some(
     (i: MenuItem) =>
       i.category.toLowerCase().includes("substitution") && /milk/i.test(i.name),
@@ -2185,6 +2197,14 @@ function MenuScreen({
       price: i.price,
     }));
 
+  // hiddenSubLabels also covers hidden sauces and egg styles now — an
+  // item's saved `options` (from the admin "Edit Item" form, e.g. Poppers
+  // & Fries' own frozen Sauce list) is a snapshot taken at save time and
+  // never re-reads the live Sauces/Egg Styles menu categories. Without
+  // this, hiding "Honey Mustard" in the Sauces category correctly removed
+  // it from the auto category-based sauce picker (getCategoryCustomizations)
+  // but had no effect on any item with its own saved options, since that
+  // list was frozen independently.
   const hiddenSubLabels = new Set<string>(
     menuItems
       .filter(
@@ -2197,6 +2217,18 @@ function MenuScreen({
           .trim()
           .toLowerCase()
           .replace(/\s+/g, ""),
+      )
+      .concat(
+        menuItems
+          .filter(
+            (i: MenuItem) =>
+              (i.category.toLowerCase().includes("sauce") ||
+                i.category.toLowerCase().includes("egg style")) &&
+              !i.available,
+          )
+          .map((i: MenuItem) =>
+            i.name.trim().toLowerCase().replace(/\s+/g, ""),
+          ),
       ),
   );
 
@@ -2272,8 +2304,8 @@ function MenuScreen({
     // No variants or DB options — fall back to legacy category customizations
     const config = getCategoryCustomizations(
       item.category,
-      liveSauces,
-      liveEggStyles,
+      sauceItemsExist ? liveSauces : undefined,
+      eggStyleItemsExist ? liveEggStyles : undefined,
       item.name,
       milkSubItemsExist ? liveMilkSubs : undefined,
       baseSubItemsExist ? liveBaseSubs : undefined,
@@ -2802,8 +2834,8 @@ function MenuScreen({
               } else {
                 const config = getCategoryCustomizations(
                   variantItem.category,
-                  liveSauces,
-                  liveEggStyles,
+                  sauceItemsExist ? liveSauces : undefined,
+                  eggStyleItemsExist ? liveEggStyles : undefined,
                   itemWithVariant.name,
                   milkSubItemsExist ? liveMilkSubs : undefined,
                   baseSubItemsExist ? liveBaseSubs : undefined,
@@ -2819,8 +2851,8 @@ function MenuScreen({
             }
             const config = getCategoryCustomizations(
               variantItem.category,
-              liveSauces,
-              liveEggStyles,
+              sauceItemsExist ? liveSauces : undefined,
+              eggStyleItemsExist ? liveEggStyles : undefined,
               itemWithVariant.name,
               milkSubItemsExist ? liveMilkSubs : undefined,
               baseSubItemsExist ? liveBaseSubs : undefined,

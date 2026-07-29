@@ -517,7 +517,7 @@ function getCrewCustomizations(
   if (c.includes("appetizer") || c.includes("snack"))
     return {
       sauces:
-        liveSauces && liveSauces.length > 0
+        liveSauces !== undefined
           ? liveSauces
           : [
               "Garlic Mayo",
@@ -533,7 +533,7 @@ function getCrewCustomizations(
   if (c.includes("savory"))
     return {
       eggStyles:
-        liveEggStyles && liveEggStyles.length > 0
+        liveEggStyles !== undefined
           ? liveEggStyles
           : [
               "Sunny Side Up",
@@ -4515,6 +4515,52 @@ function OrderCard({
                       ₱{order.total.toFixed(2)}
                     </span>
                   </div>
+
+                  {/* Cash received / Change — shown right under TOTAL instead
+                      of buried in the payment badges row, so staff see it in
+                      the same glance as the amount due. Same underlying
+                      cashReceived/changeGiven fields confirmCashPayment saves. */}
+                  {order.paymentStatus === "confirmed" &&
+                    (order.paymentMethod === "cash" ||
+                      order.paymentMethod === "split") &&
+                    order.changeGiven != null && (
+                      <>
+                        {order.cashReceived != null && (
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <span style={{ color: T.muted, fontSize: 12 }}>
+                              Cash received
+                            </span>
+                            <span style={{ color: T.cream, fontSize: 12 }}>
+                              {fmt(order.cashReceived)}
+                            </span>
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <span style={{ color: T.blue, fontSize: 12 }}>
+                            Change
+                          </span>
+                          <span
+                            style={{
+                              color: T.blue,
+                              fontSize: 12,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {fmt(order.changeGiven)}
+                          </span>
+                        </div>
+                      </>
+                    )}
                 </div>
               </div>
             </div>
@@ -4634,39 +4680,6 @@ function OrderCard({
                     )}
                   </span>
                 )}
-
-                {/* Change given — only for cash/split orders that have actually
-                    been confirmed with a stored changeGiven amount. This reads
-                    the same cashReceived/changeGiven fields confirmCashPayment
-                    already saves — previously that data only ever showed up in
-                    the one-time toast right after payment, with no lasting
-                    place to see it afterward. */}
-                {order.paymentStatus === "confirmed" &&
-                  (order.paymentMethod === "cash" ||
-                    order.paymentMethod === "split") &&
-                  order.changeGiven != null && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        padding: "5px 10px",
-                        borderRadius: 6,
-                        color: T.blue,
-                        background: "rgba(91,155,213,0.08)",
-                        border: "1px solid rgba(91,155,213,0.25)",
-                        fontWeight: 600,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                      }}
-                      title={
-                        order.cashReceived != null
-                          ? `Cash received: ${fmt(order.cashReceived)}`
-                          : undefined
-                      }
-                    >
-                      Change: {fmt(order.changeGiven)}
-                    </span>
-                  )}
 
                 {/* Decide later label */}
                 {methodPending && (
@@ -12550,6 +12563,18 @@ function CrewTab({
     )
     .map((i) => ({ name: i.name, image: i.image }));
 
+  // Whether any sauce/egg-style menu items were ever created at all
+  // (regardless of hidden/available). Same purpose as milkSubItemsExist
+  // below — without this, hiding every sauce item one at a time used to
+  // fall back to the hardcoded list (incl. "Honey Mustard") the moment the
+  // live list hit zero, undoing the hide instead of showing an empty list.
+  const sauceItemsExist = menuItems.some((i) =>
+    i.category.toLowerCase().includes("sauce"),
+  );
+  const eggStyleItemsExist = menuItems.some((i) =>
+    i.category.toLowerCase().includes("egg style"),
+  );
+
   // "Substitutions" menu items (e.g. "Oatmilk Substitution", "Matcha
   // Substitution") drive the Milk/Base option pickers. Hiding one of these
   // items (✗ Hidden in Menu tab) removes it from every drink that offers
@@ -12697,8 +12722,8 @@ function CrewTab({
     const config = getCrewCustomizations(
       item.category,
       item.name,
-      liveSauces,
-      liveEggStyles,
+      sauceItemsExist ? liveSauces : undefined,
+      eggStyleItemsExist ? liveEggStyles : undefined,
       milkSubItemsExist ? liveMilkSubs : undefined,
       baseSubItemsExist ? liveBaseSubs : undefined,
     );
@@ -13612,8 +13637,8 @@ function CrewTab({
                       const config = getCrewCustomizations(
                         resolved.category,
                         resolved.name,
-                        liveSauces,
-                        liveEggStyles,
+                        sauceItemsExist ? liveSauces : undefined,
+                        eggStyleItemsExist ? liveEggStyles : undefined,
                         milkSubItemsExist ? liveMilkSubs : undefined,
                         baseSubItemsExist ? liveBaseSubs : undefined,
                       );
