@@ -399,7 +399,7 @@ const STATUS_CFG: Record<
   OrderStatus,
   { label: string; color: string; next?: OrderStatus }
 > = {
-  pending: { label: "Pending", color: "#d4a843", next: "confirmed" },
+  pending: { label: "Pending", color: "#d4a843", next: "preparing" },
   confirmed: { label: "Confirmed", color: "#5b9bd5", next: "preparing" },
   preparing: { label: "Preparing", color: "#a855f7", next: "ready" },
   ready: { label: "Ready", color: "#22c55e", next: "completed" },
@@ -4648,28 +4648,6 @@ function OrderCard({
                   </span>
                 )}
 
-                {/* Admin override: split the payment yourself, even if the
-                    customer picked (or was recorded as) a single method */}
-                {methodKnown && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openSplitEditor();
-                    }}
-                    style={{
-                      fontSize: 11,
-                      padding: "5px 10px",
-                      borderRadius: 6,
-                      color: T.muted,
-                      background: "rgba(255,255,255,0.03)",
-                      border: `1px solid ${T.border}`,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {isSplit ? "Edit Split" : "Split Payment"}
-                  </button>
-                )}
-
                 {/* GCash reference number (customer chose "Enter Reference No."
                     instead of uploading a screenshot — no image to show, so
                     surface the sender name + ref no. directly for staff to
@@ -4740,7 +4718,7 @@ function OrderCard({
                         gap: 5,
                       }}
                     >
-                      <Printer size={12} /> Print Receipt
+                      <Printer size={12} /> Receipt
                     </button>
                     {order.paymentStatus !== "confirmed" && (
                       <button
@@ -4926,6 +4904,31 @@ function OrderCard({
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: 8 }}
                 >
+                  {/* Admin override: split the payment yourself, even if the
+                      customer picked (or was recorded as) a single method.
+                      Edge case, not part of the normal flow — kept small
+                      and out of the way instead of a full button up top. */}
+                  {methodKnown && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openSplitEditor();
+                      }}
+                      style={{
+                        alignSelf: "flex-end",
+                        fontSize: 10,
+                        color: T.faint,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                        padding: 0,
+                      }}
+                    >
+                      {isSplit ? "Edit split" : "Split payment instead?"}
+                    </button>
+                  )}
+
                   {/* Step 1: If method is unknown, let staff pick it first */}
                   {methodPending && (
                     <div>
@@ -4936,7 +4939,7 @@ function OrderCard({
                           marginBottom: 6,
                         }}
                       >
-                        Step 1 — Ask customer how they'll pay:
+                        Ask customer how they'll pay:
                       </p>
                       <div style={{ display: "flex", gap: 8 }}>
                         {(["cash", "gcash"] as const).map((m) => (
@@ -5007,13 +5010,13 @@ function OrderCard({
                       >
                         {isSplit
                           ? splitGcash > 0
-                            ? `Step 2 — Check the GCash screenshot above for ₱${splitGcash.toFixed(0)}, then collect ₱${splitCash.toFixed(0)} cash:`
-                            : `Step 2 — Collect ₱${splitCash.toFixed(0)} cash then confirm:`
-                          : `Step 2 — Collect ${
+                            ? `Check the GCash screenshot above for ₱${splitGcash.toFixed(0)}, then collect ₱${splitCash.toFixed(0)} cash:`
+                            : `Collect ₱${splitCash.toFixed(0)} cash:`
+                          : `Collect ${
                               order.paymentMethod === "cash"
                                 ? "cash"
                                 : "GCash transfer"
-                            } then confirm:`}
+                            }:`}
                       </p>
                       <button
                         onClick={async (e) => {
@@ -5115,10 +5118,19 @@ function OrderCard({
               )}
               {nextStatus && (
                 <button
-                  disabled={advancing}
+                  disabled={
+                    advancing ||
+                    (nextStatus === "completed" &&
+                      order.paymentStatus !== "confirmed")
+                  }
                   onClick={async (e) => {
                     e.stopPropagation();
                     if (advancing) return;
+                    if (
+                      nextStatus === "completed" &&
+                      order.paymentStatus !== "confirmed"
+                    )
+                      return;
                     setAdvancing(true);
                     const shouldPrint =
                       order.status === "pending" &&
@@ -5131,19 +5143,46 @@ function OrderCard({
                     flex: 1,
                     minWidth: 130,
                     padding: "9px 12px",
-                    background: advancing
-                      ? "rgba(255,255,255,0.05)"
-                      : STATUS_CFG[nextStatus].color + "18",
-                    border: `1px solid ${advancing ? T.border : STATUS_CFG[nextStatus].color + "44"}`,
-                    color: advancing ? T.muted : STATUS_CFG[nextStatus].color,
+                    background:
+                      nextStatus === "completed" &&
+                      order.paymentStatus !== "confirmed"
+                        ? "rgba(255,255,255,0.03)"
+                        : advancing
+                          ? "rgba(255,255,255,0.05)"
+                          : STATUS_CFG[nextStatus].color + "18",
+                    border: `1px solid ${
+                      nextStatus === "completed" &&
+                      order.paymentStatus !== "confirmed"
+                        ? T.border
+                        : advancing
+                          ? T.border
+                          : STATUS_CFG[nextStatus].color + "44"
+                    }`,
+                    color:
+                      nextStatus === "completed" &&
+                      order.paymentStatus !== "confirmed"
+                        ? T.faint
+                        : advancing
+                          ? T.muted
+                          : STATUS_CFG[nextStatus].color,
                     borderRadius: 8,
                     fontSize: 12,
                     fontWeight: 700,
-                    cursor: advancing ? "wait" : "pointer",
+                    cursor:
+                      advancing ||
+                      (nextStatus === "completed" &&
+                        order.paymentStatus !== "confirmed")
+                        ? "not-allowed"
+                        : "pointer",
                     opacity: advancing ? 0.6 : 1,
                   }}
                 >
-                  {advancing ? "…" : `→ ${STATUS_CFG[nextStatus].label}`}
+                  {advancing
+                    ? "…"
+                    : nextStatus === "completed" &&
+                        order.paymentStatus !== "confirmed"
+                      ? "Collect payment first"
+                      : `→ ${STATUS_CFG[nextStatus].label}`}
                 </button>
               )}
               {order.status !== "cancelled" && order.status !== "completed" && (
@@ -14071,21 +14110,52 @@ function CrewTab({
                       >
                         {nextStatus && (
                           <button
-                            onClick={() => crewUpdateStatus(o._id, nextStatus)}
+                            disabled={
+                              nextStatus === "completed" &&
+                              o.paymentStatus !== "confirmed"
+                            }
+                            onClick={() => {
+                              if (
+                                nextStatus === "completed" &&
+                                o.paymentStatus !== "confirmed"
+                              )
+                                return;
+                              crewUpdateStatus(o._id, nextStatus);
+                            }}
                             style={{
                               flex: 1,
                               minWidth: 110,
                               padding: "7px 12px",
-                              background: STATUS_CFG[nextStatus].color + "18",
-                              border: `1px solid ${STATUS_CFG[nextStatus].color}44`,
-                              color: STATUS_CFG[nextStatus].color,
+                              background:
+                                nextStatus === "completed" &&
+                                o.paymentStatus !== "confirmed"
+                                  ? "rgba(255,255,255,0.03)"
+                                  : STATUS_CFG[nextStatus].color + "18",
+                              border: `1px solid ${
+                                nextStatus === "completed" &&
+                                o.paymentStatus !== "confirmed"
+                                  ? T.border
+                                  : STATUS_CFG[nextStatus].color + "44"
+                              }`,
+                              color:
+                                nextStatus === "completed" &&
+                                o.paymentStatus !== "confirmed"
+                                  ? T.faint
+                                  : STATUS_CFG[nextStatus].color,
                               borderRadius: 8,
                               fontSize: 11,
                               fontWeight: 700,
-                              cursor: "pointer",
+                              cursor:
+                                nextStatus === "completed" &&
+                                o.paymentStatus !== "confirmed"
+                                  ? "not-allowed"
+                                  : "pointer",
                             }}
                           >
-                            → {STATUS_CFG[nextStatus].label}
+                            {nextStatus === "completed" &&
+                            o.paymentStatus !== "confirmed"
+                              ? "Collect payment first"
+                              : `→ ${STATUS_CFG[nextStatus].label}`}
                           </button>
                         )}
                         {o.paymentStatus === "pending" && (
