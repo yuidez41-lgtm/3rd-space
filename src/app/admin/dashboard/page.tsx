@@ -407,7 +407,7 @@ const STATUS_CFG: Record<
 > = {
   pending: { label: "Pending", color: "#d4a843", next: "preparing" },
   confirmed: { label: "Confirmed", color: "#5b9bd5", next: "preparing" },
-  preparing: { label: "Preparing", color: "#a855f7", next: "ready" },
+  preparing: { label: "Preparing", color: "#a855f7", next: "completed" },
   ready: { label: "Ready", color: "#22c55e", next: "completed" },
   completed: { label: "Completed", color: "#6b7280" },
   cancelled: { label: "Cancelled", color: "#ef4444" },
@@ -4634,6 +4634,39 @@ function OrderCard({
                     )}
                   </span>
                 )}
+
+                {/* Change given — only for cash/split orders that have actually
+                    been confirmed with a stored changeGiven amount. This reads
+                    the same cashReceived/changeGiven fields confirmCashPayment
+                    already saves — previously that data only ever showed up in
+                    the one-time toast right after payment, with no lasting
+                    place to see it afterward. */}
+                {order.paymentStatus === "confirmed" &&
+                  (order.paymentMethod === "cash" ||
+                    order.paymentMethod === "split") &&
+                  order.changeGiven != null && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: "5px 10px",
+                        borderRadius: 6,
+                        color: T.blue,
+                        background: "rgba(91,155,213,0.08)",
+                        border: "1px solid rgba(91,155,213,0.25)",
+                        fontWeight: 600,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                      }}
+                      title={
+                        order.cashReceived != null
+                          ? `Cash received: ${fmt(order.cashReceived)}`
+                          : undefined
+                      }
+                    >
+                      Change: {fmt(order.changeGiven)}
+                    </span>
+                  )}
 
                 {/* Decide later label */}
                 {methodPending && (
