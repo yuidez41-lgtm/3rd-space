@@ -16417,6 +16417,13 @@ export default function AdminDashboard() {
       shiftLabel?: string;
     },
   ) {
+    if (!next && activeOrders.length > 0) {
+      showToast(
+        `Can't close — ${activeOrders.length} order(s) still active. Complete or cancel them first.`,
+        false,
+      );
+      return;
+    }
     setShopToggling(true);
     try {
       // Opening a shift ALWAYS mints a brand-new timestamp — never reuse

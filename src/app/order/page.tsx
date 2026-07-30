@@ -6684,6 +6684,46 @@ export default function OrderPage() {
     pickupTime: "",
   });
 
+  const isPopRef = useRef(false);
+
+  // Restore cart if the page remounts (refresh, phone back that unmounts, etc.)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem("3rdspace_cart");
+      if (saved) setCart(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem("3rdspace_cart", JSON.stringify(cart));
+    } catch {}
+  }, [cart]);
+
+  // Make each step a real history entry so the phone/browser back button
+  // steps backward through mode-select -> menu -> checkout -> payment
+  // instead of leaving /order entirely.
+  useEffect(() => {
+    window.history.replaceState({ step: "mode-select" }, "");
+    const handlePopState = (e: PopStateEvent) => {
+      const s = e.state?.step as Step | undefined;
+      if (s) {
+        isPopRef.current = true;
+        setStep(s);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (isPopRef.current) {
+      isPopRef.current = false;
+      return;
+    }
+    window.history.pushState({ step }, "");
+  }, [step]);
+
   useEffect(() => {
     fetchMenu();
     fetch("/api/shop-status")
@@ -6869,6 +6909,9 @@ export default function OrderPage() {
       setCart([]);
       setReceiptUrl("");
       setReceiptKey("");
+      try {
+        sessionStorage.removeItem("3rdspace_cart");
+      } catch {}
     } catch (e: any) {
       const msg = e.message || "Something went wrong. Try again.";
       const isClosedError =
@@ -6917,6 +6960,9 @@ export default function OrderPage() {
     setCart([]);
     setReceiptUrl("");
     setReceiptKey("");
+    try {
+      sessionStorage.removeItem("3rdspace_cart");
+    } catch {}
     setPaymentMethod("cash");
     setForm({
       customerName: "",
