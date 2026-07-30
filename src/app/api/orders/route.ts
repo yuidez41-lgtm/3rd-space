@@ -33,7 +33,13 @@ export async function GET(req: NextRequest) {
   const from = searchParams.get("from");
   const to = searchParams.get("to");
 
-  const query: any = { archived: { $ne: true } };
+  const query: any = {};
+  // Only exclude archived orders when there's no explicit date range —
+  // a from/to query (like the shift-detail modal) is asking for a
+  // specific historical window and archived orders are exactly what's
+  // in it. Excluding them here is what caused old shifts to show far
+  // fewer orders in the detail view than the shift report's own count.
+  if (!from && !to) query.archived = { $ne: true };
   if (status) query.status = status;
   if (type) query.type = type;
   if (from || to) {

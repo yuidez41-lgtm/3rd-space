@@ -9563,6 +9563,27 @@ function AnalyticsTab({
   }
   const [historyDayKey, setHistoryDayKey] = useState(todayCalKey);
   const [selectedShift, setSelectedShift] = useState<ShiftReport | null>(null);
+  const [selectedShiftOrders, setSelectedShiftOrders] = useState<any[] | null>(
+    null,
+  );
+  const [selectedShiftOrdersLoading, setSelectedShiftOrdersLoading] =
+    useState(false);
+
+  useEffect(() => {
+    if (!selectedShift) {
+      setSelectedShiftOrders(null);
+      return;
+    }
+    setSelectedShiftOrdersLoading(true);
+    fetch(
+      `/api/orders?from=${encodeURIComponent(selectedShift.openedAt)}&to=${encodeURIComponent(selectedShift.closedAt)}`,
+    )
+      .then((r) => r.json())
+      .then((data) => setSelectedShiftOrders(Array.isArray(data) ? data : []))
+      .catch(() => setSelectedShiftOrders([]))
+      .finally(() => setSelectedShiftOrdersLoading(false));
+  }, [selectedShift]);
+
   const isViewingToday = historyDayKey === todayCalKey;
   const [pastReports, setPastReports] = useState<ShiftReport[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -10726,13 +10747,8 @@ ${row("Gross sales", fmt(totalRevenue + totalDiscount))}
 
       {selectedShift &&
         (() => {
-          const start = new Date(selectedShift.openedAt).getTime();
-          const end = new Date(selectedShift.closedAt).getTime();
-          const shiftOrders = orders
-            .filter((o) => {
-              const t = new Date(o.createdAt).getTime();
-              return t >= start && t <= end && o.status !== "pending";
-            })
+          const shiftOrders = (selectedShiftOrders ?? [])
+            .filter((o) => o.status !== "pending")
             .sort(
               (a, b) =>
                 new Date(b.createdAt).getTime() -
@@ -11024,7 +11040,7 @@ ${row("Gross sales", fmt(totalRevenue + totalDiscount))}
                             >
                               ·{" "}
                               {o.items
-                                .map((it) => `${it.quantity}× ${it.name}`)
+                                .map((it: any) => `${it.quantity}× ${it.name}`)
                                 .join(", ")}
                             </span>
                           )}
