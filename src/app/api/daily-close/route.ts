@@ -2,6 +2,17 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { Order } from "@/models/Order";
 import mongoose from "mongoose";
+import { verifySession } from "@/lib/auth";
+import { NextRequest } from "next/server";
+
+async function requireStaffSession(req: NextRequest) {
+  const token = req.cookies.get("3s_session")?.value;
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
 
 const DailyReportSchema = new mongoose.Schema({}, { strict: false });
 const DailyReport =
@@ -26,8 +37,11 @@ function calendarKey(d = new Date()) {
   }).format(d);
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const authError = await requireStaffSession(req);
+    if (authError) return authError;
+
     await connectDB();
     const { openedAt, countedCash } = await req.json();
     const now = new Date();
@@ -304,8 +318,11 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const authError = await requireStaffSession(req);
+    if (authError) return authError;
+
     await connectDB();
     const reports = await DailyReport.find({})
       .sort({ dayKey: -1 })

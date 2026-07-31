@@ -6,6 +6,18 @@ const SettingSchema = new mongoose.Schema({}, { strict: false });
 const Setting =
   mongoose.models.Setting || mongoose.model("Setting", SettingSchema);
 
+async function requireStaffSession(req: Request) {
+  const { verifySession } = await import("@/lib/auth");
+  const cookieHeader = req.headers.get("cookie") || "";
+  const match = cookieHeader.match(/3s_session=([^;]+)/);
+  const token = match ? decodeURIComponent(match[1]) : null;
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
 export async function GET() {
   try {
     await connectDB();
@@ -34,6 +46,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const authError = await requireStaffSession(req);
+    if (authError) return authError;
+
     await connectDB();
     const { open, openedAt, startingCash, shiftLabel } = await req.json();
 

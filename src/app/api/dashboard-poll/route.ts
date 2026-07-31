@@ -3,6 +3,8 @@ import { connectDB } from "@/lib/mongodb";
 import { Order } from "@/models/Order";
 import { MenuItem } from "@/models/MenuItem";
 import { Setting } from "@/lib/models/Setting";
+import { verifySession } from "@/lib/auth";
+import { NextRequest } from "next/server";
 
 // Combined poll endpoint for the admin dashboard's recurring refresh loop.
 // Previously each poll tick fired 4 separate serverless invocations
@@ -19,7 +21,13 @@ import { Setting } from "@/lib/models/Setting";
 // from /api/shop-status/cash-log. If either of those routes' logic
 // changes, update this copy too.
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const token = req.cookies.get("3s_session")?.value;
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   await connectDB();
 
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);

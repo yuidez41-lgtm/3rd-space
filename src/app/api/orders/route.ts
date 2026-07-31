@@ -5,6 +5,16 @@ import { MenuItem } from "@/models/MenuItem";
 import { notifyClients } from "@/lib/sse";
 import Redemption from "@/models/Redemption";
 import { Setting } from "@/lib/models/Setting";
+import { verifySession } from "@/lib/auth";
+
+async function requireStaffSession(req: NextRequest) {
+  const token = req.cookies.get("3s_session")?.value;
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
 
 function generateOrderNumber() {
   const date = new Date();
@@ -15,10 +25,17 @@ function generateOrderNumber() {
 }
 
 export async function GET(req: NextRequest) {
-  await connectDB();
-
   const { searchParams } = new URL(req.url);
   const orderNumber = searchParams.get("orderNumber");
+
+  // Public: order-tracking lookup by orderNumber stays open for customers.
+  // Everything else (full list, dashboard poll, shift filters) is staff-only.
+  if (!orderNumber) {
+    const authError = await requireStaffSession(req);
+    if (authError) return authError;
+  }
+
+  await connectDB();
 
   if (orderNumber) {
     const order = await Order.findOne({ orderNumber });
@@ -454,6 +471,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const authError = await requireStaffSession(req);
+  if (authError) return authError;
+
   await connectDB();
   const body = await req.json();
 
@@ -495,6 +515,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const authError = await requireStaffSession(req);
+  if (authError) return authError;
+
   await connectDB();
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");

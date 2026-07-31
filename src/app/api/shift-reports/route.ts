@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/mongodb";
 import { Order } from "@/models/Order";
 import mongoose from "mongoose";
+import { verifySession } from "@/lib/auth";
+
+async function requireStaffSession(req: NextRequest) {
+  const token = req.cookies.get("3s_session")?.value;
+  const session = token ? await verifySession(token) : null;
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return null;
+}
 
 const ShiftReportSchema = new mongoose.Schema({}, { strict: false });
 const ShiftReport =
@@ -24,6 +34,9 @@ function dayKeyOf(date: Date) {
 const TERMINAL_STATUSES = ["completed", "cancelled"];
 
 export async function GET(req: NextRequest) {
+  const authError = await requireStaffSession(req);
+  if (authError) return authError;
+
   await connectDB();
   const { searchParams } = new URL(req.url);
   const dayKey = searchParams.get("dayKey") || dayKeyOf(new Date());
@@ -32,6 +45,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const authError = await requireStaffSession(req);
+  if (authError) return authError;
+
   await connectDB();
   const body = await req.json();
   const {
