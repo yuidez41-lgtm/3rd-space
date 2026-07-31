@@ -17784,7 +17784,7 @@ export default function AdminDashboard() {
               <RefreshCw size={13} /> Refresh
             </button>
           )}
-          {isAdmin && !isMobile && (
+          {/* {isAdmin && !isMobile && (
             <button
               onClick={async () => {
                 if (
@@ -17793,7 +17793,18 @@ export default function AdminDashboard() {
                   )
                 )
                   return;
-                await fetch("/api/debug/wipe-data", { method: "POST" });
+                const pw = prompt("Enter wipe password to confirm:");
+                if (!pw) return;
+                const res = await fetch("/api/debug/wipe-data", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ password: pw }),
+                });
+                if (!res.ok) {
+                  const d = await res.json().catch(() => ({}));
+                  showToast(d.error || "Wipe failed — wrong password?");
+                  return;
+                }
                 setOrders([]);
                 setDailyReports([]);
                 setShiftReports([]);
@@ -17820,7 +17831,7 @@ export default function AdminDashboard() {
             >
               <Trash2 size={12} /> WIPE DATA
             </button>
-          )}
+          )} */}
           <button
             onClick={logout}
             style={{
