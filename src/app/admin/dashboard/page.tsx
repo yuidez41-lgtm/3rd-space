@@ -5079,7 +5079,9 @@ function OrderCard({
                             setShowCashRegister(true);
                           } else {
                             await onPaymentConfirm(order._id);
-                            printReceipt(1);
+                            // Auto-print on GCash confirm removed per staff
+                            // request — use the "Receipt" button to print
+                            // on demand instead.
                           }
                         }}
                         style={{
@@ -15330,22 +15332,8 @@ function CashLogModal({
         const newOut = d.paidOut || [];
         setPaidIn(newIn);
         setPaidOut(newOut);
-        // Single combined rawbt: URL — slip text + drawer kick in one
-        // buffer, so RawBT can't drop either half.
-        try {
-          const bytes = buildCashLogReceiptBytes({
-            type,
-            amount: amt,
-            note,
-            staffName,
-            at: new Date().toISOString(),
-            totalIn: newIn.reduce((s: number, e: any) => s + e.amount, 0),
-            totalOut: newOut.reduce((s: number, e: any) => s + e.amount, 0),
-          });
-          openRawBtUrl(escPosToRawBtUrl(bytes));
-        } catch {
-          // no-op if RawBT isn't reachable — never block the actual log entry
-        }
+        // Auto-print removed per staff request — Cash In/Out entries no
+        // longer trigger a RawBT receipt or drawer kick.
         onLogged?.(type, amt);
         setAmount("");
         setNote("");
