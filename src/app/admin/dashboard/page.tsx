@@ -9813,7 +9813,7 @@ ${row("Gross sales", fmt(totalRevenue + totalDiscount))}
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
         {(
           [
             ["today", "Today"],
@@ -9842,6 +9842,42 @@ ${row("Gross sales", fmt(totalRevenue + totalDiscount))}
             </button>
           );
         })}
+        <button
+          onClick={() => {
+            const now = new Date();
+            const oneYearAgo = new Date(now);
+            oneYearAgo.setFullYear(now.getFullYear() - 1);
+            const fmtDate = (d: Date) =>
+              new Intl.DateTimeFormat("en-CA", {
+                timeZone: "Asia/Manila",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).format(d);
+            const from = fmtDate(oneYearAgo);
+            const to = fmtDate(now);
+            window.open(`/api/reports/export?from=${from}&to=${to}`, "_blank");
+          }}
+          style={{
+            marginLeft: "auto",
+            padding: "8px 16px",
+            borderRadius: 8,
+            cursor: "pointer",
+            background: "rgba(212,168,67,0.1)",
+            border: `1px solid ${T.borderH}`,
+            color: T.gold,
+            fontFamily: "'Cinzel',serif",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: ".08em",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <RefreshCw size={12} style={{ transform: "rotate(90deg)" }} />
+          EXPORT LAST 12 MONTHS
+        </button>
       </div>
 
       {analyticsView === "today" ? (

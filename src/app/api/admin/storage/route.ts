@@ -89,7 +89,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     mongo: {
-      storageMB: Math.round((dbStats.dataSize ?? 0) / 1024),
+      storageMB: Math.round((dbStats.dataSize ?? 0) / (1024 * 1024)),
       limitMB: 512,
       collections: colStats,
     },
