@@ -5075,7 +5075,10 @@ function OrderCard({
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (order.paymentMethod === "cash" || isSplit) {
+                          if (
+                            order.paymentMethod === "cash" ||
+                            (isSplit && splitCash > 0)
+                          ) {
                             setShowCashRegister(true);
                           } else {
                             await onPaymentConfirm(order._id);
@@ -5098,7 +5101,8 @@ function OrderCard({
                           letterSpacing: ".06em",
                         }}
                       >
-                        {order.paymentMethod === "cash" || isSplit ? (
+                        {order.paymentMethod === "cash" ||
+                        (isSplit && splitCash > 0) ? (
                           <>
                             <Banknote
                               size={13}
