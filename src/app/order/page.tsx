@@ -4730,7 +4730,7 @@ function PaymentScreen({
     (effectiveMethod === "split" && gcashPortion > 0);
 
   const GCASH_NUMBER =
-    orderType === "delivery" ? "0956 627 7949" : "0917 813 7503";
+    orderType === "delivery" ? "0956 730 9772" : "0917 813 7503";
   const GCASH_NAME = "3RD SPACE COFFEE";
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
