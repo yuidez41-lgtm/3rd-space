@@ -3311,8 +3311,8 @@ function OrderCard({
           total: order.total,
           deliveryFee: (order as any).deliveryFee,
           paymentMethod: order.paymentMethod,
-          cashReceived: extra?.cashReceived,
-          change: extra?.change,
+          cashReceived: extra?.cashReceived ?? (order as any).cashReceived,
+          change: extra?.change ?? (order as any).changeGiven,
         });
         const url = escPosToRawBtUrl(receiptBytes);
         openRawBtUrl(url);
@@ -12689,6 +12689,74 @@ function CrewTab({
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryFeeInput, setDeliveryFeeInput] = useState("");
 
+  // "Others" — tap-to-add misc charges (tips, extra fees, adjustments).
+  // Same shared, DB-backed preset list as the admin order-edit modal
+  // (/api/others-presets), so crew and admins are always tapping the same
+  // buttons. Each tap adds a new removable line item rather than filling
+  // a single input, so multiple charges (e.g. a tip + a container fee)
+  // can stack in one order.
+  const [othersCharges, setOthersCharges] = useState<
+    { id: string; price: number }[]
+  >([]);
+  const [othersPresets, setOthersPresets] = useState<number[]>([]);
+  const [othersInput, setOthersInput] = useState("");
+  const [othersManaging, setOthersManaging] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+
+  useEffect(() => {
+    fetch("/api/others-presets")
+      .then((r) => r.json())
+      .then((d) => setOthersPresets(d.amounts || []))
+      .catch(() => {});
+  }, []);
+
+  async function saveOthersPresets(next: number[]) {
+    setOthersPresets(next);
+    try {
+      await fetch("/api/others-presets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amounts: next }),
+      });
+    } catch {}
+  }
+  function addOthersPreset() {
+    const price = parseFloat(othersInput);
+    if (!price || price <= 0) return;
+    if (!othersPresets.includes(price)) {
+      saveOthersPresets([...othersPresets, price].sort((a, b) => a - b));
+    }
+    setOthersInput("");
+  }
+  function removeOthersPreset(price: number) {
+    saveOthersPresets(othersPresets.filter((p) => p !== price));
+  }
+  function startEditOthersPreset(price: number) {
+    setEditingPreset(price);
+    setEditingValue(String(price));
+  }
+  function commitEditOthersPreset(oldPrice: number) {
+    const newPrice = parseFloat(editingValue);
+    setEditingPreset(null);
+    if (!newPrice || newPrice <= 0 || newPrice === oldPrice) return;
+    const next = othersPresets
+      .filter((p) => p !== oldPrice)
+      .concat(newPrice)
+      .filter((p, i, arr) => arr.indexOf(p) === i)
+      .sort((a, b) => a - b);
+    saveOthersPresets(next);
+  }
+  function addOthersCharge(price: number) {
+    setOthersCharges((p) => [
+      ...p,
+      { id: `${Date.now()}-${Math.random()}`, price },
+    ]);
+  }
+  function removeOthersCharge(id: string) {
+    setOthersCharges((p) => p.filter((c) => c.id !== id));
+  }
+
   useEffect(() => {
     fetchMyOrders();
     const id = setInterval(fetchMyOrders, 45000);
@@ -12750,6 +12818,7 @@ function CrewTab({
     : 0;
   const cartTotal = cartSubtotal - discountAmount;
   const cartCount = cart.reduce((s, c) => s + c.qty, 0);
+  const othersTotal = othersCharges.reduce((s, c) => s + c.price, 0);
 
   function addItem(item: MenuItem) {
     const hasAdminVariant = item.options?.some(
@@ -12816,7 +12885,8 @@ function CrewTab({
   async function placeOrder() {
     const deliveryFee = parseFloat(deliveryFeeInput) || 0;
     const grandTotal =
-      orderType === "delivery" ? cartTotal + deliveryFee : cartTotal;
+      (orderType === "delivery" ? cartTotal + deliveryFee : cartTotal) +
+      othersTotal;
 
     if (orderType === "dine-in") {
       if ((!tableNumber.trim() && !customerName.trim()) || cart.length === 0)
@@ -12850,20 +12920,27 @@ function CrewTab({
           deliveryAddress:
             orderType === "delivery" ? deliveryAddress.trim() : undefined,
           deliveryFee: orderType === "delivery" ? deliveryFee : undefined,
-          items: cart.map((c) => {
-            const custLabels = c.customizations.map((x) =>
-              x.price > 0 ? `${x.label} (+₱${x.price})` : x.label,
-            );
-            return {
-              menuItemId: c.item._id,
-              name: custLabels.length
-                ? `${c.item.name} (${custLabels.join(", ")})`
-                : c.item.name,
-              price: c.item.price + c.extraPrice,
-              quantity: c.qty,
-              customizations: c.customizations,
-            };
-          }),
+          items: [
+            ...cart.map((c) => {
+              const custLabels = c.customizations.map((x) =>
+                x.price > 0 ? `${x.label} (+₱${x.price})` : x.label,
+              );
+              return {
+                menuItemId: c.item._id,
+                name: custLabels.length
+                  ? `${c.item.name} (${custLabels.join(", ")})`
+                  : c.item.name,
+                price: c.item.price + c.extraPrice,
+                quantity: c.qty,
+                customizations: c.customizations,
+              };
+            }),
+            ...othersCharges.map((c) => ({
+              name: "Others",
+              price: c.price,
+              quantity: 1,
+            })),
+          ],
           total: grandTotal,
           ...(selectedDiscount
             ? {
@@ -12901,6 +12978,7 @@ function CrewTab({
         setCustomerContact("");
         setDeliveryAddress("");
         setDeliveryFeeInput("");
+        setOthersCharges([]);
         onOrderPlaced();
         fetchMyOrders();
       }
@@ -12921,6 +12999,10 @@ function CrewTab({
     setCart([]);
     setTableNumber("");
     setCustomerName("");
+    setCustomerContact("");
+    setDeliveryAddress("");
+    setDeliveryFeeInput("");
+    setOthersCharges([]);
     onOrderPlaced();
     fetchMyOrders();
   }
@@ -12930,6 +13012,10 @@ function CrewTab({
     setCart([]);
     setTableNumber("");
     setCustomerName("");
+    setCustomerContact("");
+    setDeliveryAddress("");
+    setDeliveryFeeInput("");
+    setOthersCharges([]);
     onOrderPlaced();
     fetchMyOrders();
   }
@@ -13270,7 +13356,181 @@ function CrewTab({
         >
           ORDER SUMMARY
         </p>
-        {cart.length === 0 ? (
+
+        <div style={{ marginBottom: 4 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 6,
+            }}
+          >
+            <label
+              style={{
+                color: T.muted,
+                fontSize: 10,
+                letterSpacing: ".1em",
+              }}
+            >
+              OTHERS (e.g. tip, extra charge)
+            </label>
+            {othersPresets.length > 0 && (
+              <button
+                onClick={() => setOthersManaging((v) => !v)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: othersManaging ? T.gold : T.muted,
+                  fontSize: 10,
+                  letterSpacing: ".05em",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {othersManaging ? "Done" : "Manage"}
+              </button>
+            )}
+          </div>
+
+          {othersPresets.length > 0 && (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 6,
+                marginBottom: 8,
+              }}
+            >
+              {othersPresets.map((price) =>
+                othersManaging && editingPreset === price ? (
+                  <input
+                    key={price}
+                    autoFocus
+                    type="number"
+                    inputMode="decimal"
+                    value={editingValue}
+                    onChange={(e) => setEditingValue(e.target.value)}
+                    onBlur={() => commitEditOthersPreset(price)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") commitEditOthersPreset(price);
+                      if (e.key === "Escape") setEditingPreset(null);
+                    }}
+                    style={{
+                      width: 70,
+                      padding: "7px 8px",
+                      borderRadius: 8,
+                      border: `1px solid ${T.gold}`,
+                      background: "rgba(255,255,255,0.06)",
+                      color: T.cream,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      outline: "none",
+                    }}
+                  />
+                ) : (
+                  <div
+                    key={price}
+                    style={{ position: "relative", display: "inline-flex" }}
+                  >
+                    <button
+                      onClick={() =>
+                        othersManaging
+                          ? startEditOthersPreset(price)
+                          : addOthersCharge(price)
+                      }
+                      style={{
+                        padding: othersManaging
+                          ? "8px 22px 8px 12px"
+                          : "8px 12px",
+                        borderRadius: 8,
+                        border: `1px solid ${othersManaging ? T.gold : T.border}`,
+                        background: "rgba(255,255,255,0.02)",
+                        color: T.cream,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      +₱{price}
+                    </button>
+                    {othersManaging && (
+                      <span
+                        onClick={() => removeOthersPreset(price)}
+                        title="Remove preset"
+                        style={{
+                          position: "absolute",
+                          top: -6,
+                          right: -6,
+                          width: 16,
+                          height: 16,
+                          borderRadius: 999,
+                          background: T.red,
+                          color: "#fff",
+                          fontSize: 10,
+                          lineHeight: "16px",
+                          textAlign: "center",
+                          cursor: "pointer",
+                        }}
+                      >
+                        ×
+                      </span>
+                    )}
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={othersInput}
+              onChange={(e) => setOthersInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addOthersPreset()}
+              placeholder="Add new amount (₱)"
+              style={{
+                flex: 1,
+                background: "rgba(255,255,255,0.04)",
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                padding: "9px 12px",
+                color: T.cream,
+                fontSize: 13,
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+            <button
+              onClick={addOthersPreset}
+              disabled={!othersInput || parseFloat(othersInput) <= 0}
+              style={{
+                padding: "9px 16px",
+                borderRadius: 8,
+                border: "none",
+                background:
+                  othersInput && parseFloat(othersInput) > 0
+                    ? T.gold
+                    : "rgba(255,255,255,0.06)",
+                color:
+                  othersInput && parseFloat(othersInput) > 0
+                    ? "#0a0f0a"
+                    : T.muted,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor:
+                  othersInput && parseFloat(othersInput) > 0
+                    ? "pointer"
+                    : "not-allowed",
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+
+        {cart.length === 0 && othersCharges.length === 0 ? (
           <div
             style={{
               display: "flex",
@@ -13399,6 +13659,56 @@ function CrewTab({
                   </div>
                 ),
               )}
+              {othersCharges.map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 10px",
+                    background: "rgba(255,255,255,0.03)",
+                    borderRadius: 8,
+                    border: `1px solid ${T.border}`,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{ color: T.cream, fontSize: 12, fontWeight: 600 }}
+                    >
+                      Others
+                    </p>
+                    <p
+                      style={{
+                        color: T.gold,
+                        fontSize: 12,
+                        fontFamily: "'Cinzel',serif",
+                      }}
+                    >
+                      {fmt(c.price)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => removeOthersCharge(c.id)}
+                    title="Remove"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      border: `1px solid ${T.border}`,
+                      background: "none",
+                      color: T.muted,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 16,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
             <div
               style={{
@@ -13435,15 +13745,29 @@ function CrewTab({
                           marginRight: 6,
                         }}
                       >
-                        {fmt(cartSubtotal)}
+                        {fmt(cartSubtotal + othersTotal)}
                       </span>
-                      {fmt(cartTotal)}
+                      {fmt(cartTotal + othersTotal)}
                     </>
                   ) : (
-                    fmt(cartTotal)
+                    fmt(cartTotal + othersTotal)
                   )}
                 </span>
               </div>
+              {othersTotal > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: -8,
+                    marginBottom: 10,
+                  }}
+                >
+                  <span style={{ color: T.faint, fontSize: 10 }}>
+                    incl. {fmt(othersTotal)} others
+                  </span>
+                </div>
+              )}
               {discounts.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
                   <p
@@ -14082,7 +14406,7 @@ function CrewTab({
             >
               <UtensilsCrossed size={16} />
               {cartCount > 0
-                ? `VIEW ORDER · ${fmt(cartTotal)} (${cartCount} items)`
+                ? `VIEW ORDER · ${fmt(cartTotal + othersTotal)} (${cartCount} items)`
                 : "Cart is empty"}
             </button>
           </div>
