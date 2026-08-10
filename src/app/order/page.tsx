@@ -43,12 +43,19 @@ const BR = "rgba(232,213,163,0.11)";
 const BRH = "rgba(212,168,67,0.45)";
 const ERR = "rgba(248,113,113,0.8)";
 
-function getDeliveryFee(distanceKm: number): number {
-  if (distanceKm <= 1) return 30;
-  if (distanceKm <= 3) return 50;
-  if (distanceKm <= 10) return 100;
-  return 150;
+// Returns the delivery fee in PHP for a given distance from 3rd Space,
+// or null if the address is beyond the 20 km delivery radius.
+function getDeliveryFee(distanceKm: number): number | null {
+  if (distanceKm <= 2) return 35;
+  if (distanceKm <= 4) return 60;
+  if (distanceKm <= 6) return 90;
+  if (distanceKm <= 8) return 120;
+  if (distanceKm <= 20) return 150;
+  return null;
 }
+
+const DELIVERY_OUT_OF_RANGE_MSG =
+  "Sorry, your location is beyond our 20 km delivery radius. We currently cannot deliver to this location.";
 
 /* ─── CUSTOMIZATION CONFIG ────────────────────────────────────────────────── */
 const MILK_SUBS = [
@@ -3020,7 +3027,11 @@ function DeliveryAddressPicker({
         const kmRaw = route.distance / 1000;
         const km = kmRaw.toFixed(1);
         const fee = getDeliveryFee(kmRaw);
-        setRouteDistance(`${km} km from 3rd Space · ₱${fee} delivery fee`);
+        setRouteDistance(
+          fee == null
+            ? `${km} km from 3rd Space · outside 20 km delivery radius`
+            : `${km} km from 3rd Space · ₱${fee} delivery fee`,
+        );
         onChangeRef.current({
           ...(valueRef.current || {}),
           lat: destLat,
@@ -3579,7 +3590,7 @@ function DeliveryAddressPicker({
           >
             📍 {routeDistance}
           </div>
-          {value?.deliveryFee != null && (
+          {value?.distanceKm != null && value?.deliveryFee != null && (
             <div
               style={{
                 display: "grid",
@@ -3595,13 +3606,15 @@ function DeliveryAddressPicker({
             >
               <span>Zone</span>
               <span style={{ color: C, fontWeight: 600, textAlign: "right" }}>
-                {(value.distanceKm ?? 0) <= 1
-                  ? "Zone 1 (within 1 km)"
-                  : (value.distanceKm ?? 0) <= 3
-                    ? "Zone 2 (1–3 km)"
-                    : (value.distanceKm ?? 0) <= 10
-                      ? "Zone 3 (3–10 km)"
-                      : "Zone 4 (10 km+)"}
+                {(value.distanceKm ?? 0) <= 2
+                  ? "0–2 km"
+                  : (value.distanceKm ?? 0) <= 4
+                    ? "2–4 km"
+                    : (value.distanceKm ?? 0) <= 6
+                      ? "4–6 km"
+                      : (value.distanceKm ?? 0) <= 8
+                        ? "6–8 km"
+                        : "8–20 km"}
               </span>
               <span>Delivery fee</span>
               <span
@@ -3614,6 +3627,24 @@ function DeliveryAddressPicker({
               >
                 ₱{value.deliveryFee}
               </span>
+            </div>
+          )}
+          {value?.distanceKm != null && value?.deliveryFee == null && (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                background: "rgba(248,113,113,0.08)",
+                border: `1px solid ${ERR}`,
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 12,
+                color: ERR,
+                lineHeight: 1.4,
+              }}
+            >
+              {DELIVERY_OUT_OF_RANGE_MSG}
             </div>
           )}
         </div>
@@ -4084,18 +4115,33 @@ function CheckoutScreen({
 
   const addrComplete =
     orderType === "delivery"
-      ? (form.deliveryAddress?.houseNo || "").trim() &&
-        (form.deliveryAddress?.street || "").trim() &&
-        (form.deliveryAddress?.barangay || "").trim() &&
-        (form.deliveryAddress?.city || "").trim()
+      ? Boolean(
+          (form.deliveryAddress?.houseNo || "").trim() &&
+          (form.deliveryAddress?.street || "").trim() &&
+          (form.deliveryAddress?.barangay || "").trim() &&
+          (form.deliveryAddress?.city || "").trim(),
+        )
       : true;
+
+  // Once a route has been calculated, distanceKm is set. If deliveryFee is
+  // null at that point, the address is beyond the 20 km delivery radius and
+  // checkout must be blocked.
+  const deliveryOutOfRange =
+    orderType === "delivery" &&
+    form.deliveryAddress?.distanceKm != null &&
+    form.deliveryAddress?.deliveryFee == null;
 
   const valid =
     orderType === "dine-in"
       ? (form.tableNumber || "").trim() && (form.customerName || "").trim()
       : orderType === "delivery"
-        ? (form.customerName || "").trim() && phoneValid && addrComplete
-        : (form.customerName || "").trim();
+        ? Boolean(
+            (form.customerName || "").trim() &&
+            phoneValid &&
+            addrComplete &&
+            !deliveryOutOfRange,
+          )
+        : Boolean((form.customerName || "").trim());
 
   return (
     <div

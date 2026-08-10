@@ -12822,7 +12822,12 @@ function CrewTab({
       if ((!tableNumber.trim() && !customerName.trim()) || cart.length === 0)
         return;
     } else {
-      if (!customerName.trim() || !deliveryAddress.trim() || cart.length === 0)
+      if (
+        !customerName.trim() ||
+        !deliveryAddress.trim() ||
+        !deliveryFeeInput.trim() ||
+        cart.length === 0
+      )
         return;
     }
 
@@ -13162,15 +13167,61 @@ function CrewTab({
                   fontFamily: "'Cinzel',serif",
                 }}
               >
-                DELIVERY FEE (₱)
+                DELIVERY FEE (₱) — TAP DISTANCE BAND
               </label>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, 1fr)",
+                  gap: 6,
+                  marginBottom: 8,
+                }}
+              >
+                {[
+                  { label: "0–2km", fee: 35 },
+                  { label: "2–4km", fee: 60 },
+                  { label: "4–6km", fee: 90 },
+                  { label: "6–8km", fee: 120 },
+                  { label: "8–20km", fee: 150 },
+                ].map((band) => {
+                  const active = deliveryFeeInput === String(band.fee);
+                  return (
+                    <button
+                      key={band.fee}
+                      type="button"
+                      onClick={() => setDeliveryFeeInput(String(band.fee))}
+                      style={{
+                        padding: "8px 4px",
+                        borderRadius: 8,
+                        cursor: "pointer",
+                        background: active
+                          ? T.goldDim
+                          : "rgba(255,255,255,0.03)",
+                        border: `1px solid ${active ? T.borderH : T.border}`,
+                        color: active ? T.gold : T.muted,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        fontFamily: "'Cinzel',serif",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 2,
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      <span>{band.label}</span>
+                      <span style={{ fontSize: 12 }}>₱{band.fee}</span>
+                    </button>
+                  );
+                })}
+              </div>
               <input
                 type="number"
                 inputMode="decimal"
                 value={deliveryFeeInput}
                 onChange={(e) => setDeliveryFeeInput(e.target.value)}
                 onWheel={(e) => e.currentTarget.blur()}
-                placeholder="0"
+                placeholder="Or type a custom amount"
                 style={{
                   width: "100%",
                   background: "rgba(255,255,255,0.04)",
@@ -13183,6 +13234,15 @@ function CrewTab({
                   boxSizing: "border-box",
                 }}
               />
+              <p
+                style={{
+                  color: T.faint,
+                  fontSize: 10,
+                  marginTop: 4,
+                }}
+              >
+                Over 20km? Do not accept the order — outside delivery radius.
+              </p>
             </div>
           </div>
         )}
@@ -13492,7 +13552,9 @@ function CrewTab({
                 disabled={
                   (orderType === "dine-in"
                     ? !tableNumber.trim() && !customerName.trim()
-                    : !customerName.trim() || !deliveryAddress.trim()) ||
+                    : !customerName.trim() ||
+                      !deliveryAddress.trim() ||
+                      !deliveryFeeInput.trim()) ||
                   cart.length === 0 ||
                   submitting
                 }
@@ -13502,15 +13564,17 @@ function CrewTab({
                   background:
                     (orderType === "dine-in"
                       ? tableNumber.trim() || customerName.trim()
-                      : customerName.trim() && deliveryAddress.trim()) &&
-                    cart.length > 0
+                      : customerName.trim() &&
+                        deliveryAddress.trim() &&
+                        deliveryFeeInput.trim()) && cart.length > 0
                       ? T.gold
                       : "rgba(212,168,67,0.25)",
                   color:
                     (orderType === "dine-in"
                       ? tableNumber.trim() || customerName.trim()
-                      : customerName.trim() && deliveryAddress.trim()) &&
-                    cart.length > 0
+                      : customerName.trim() &&
+                        deliveryAddress.trim() &&
+                        deliveryFeeInput.trim()) && cart.length > 0
                       ? "#0a0f0a"
                       : T.muted,
                   border: "none",
@@ -13561,7 +13625,9 @@ function CrewTab({
                   </p>
                 )}
               {orderType === "delivery" &&
-                (!customerName.trim() || !deliveryAddress.trim()) && (
+                (!customerName.trim() ||
+                  !deliveryAddress.trim() ||
+                  !deliveryFeeInput.trim()) && (
                   <p
                     style={{
                       color: "rgba(245,158,11,0.7)",
@@ -13570,7 +13636,7 @@ function CrewTab({
                       marginTop: 6,
                     }}
                   >
-                    Enter customer name and delivery address
+                    Enter customer name, address, and select a delivery fee
                   </p>
                 )}
             </div>
