@@ -2274,12 +2274,6 @@ function MenuScreen({
   );
 
   const ITEM_VARIANTS: Record<string, { label: string; price?: number }[]> = {
-    longganisa: [
-      { label: "Garlic" },
-      { label: "Hamonado" },
-      { label: "Mixed" },
-    ],
-    tapa: [{ label: "Chicken" }, { label: "Beef" }],
     "pancake classic": [
       { label: "Classic 2pcs", price: 40 },
       { label: "Classic 4pcs", price: 70 },

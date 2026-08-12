@@ -437,8 +437,6 @@ type CrewCustomizationConfig = {
 };
 
 const ITEM_VARIANTS: Record<string, { label: string; price?: number }[]> = {
-  longganisa: [{ label: "Garlic" }, { label: "Hamonado" }, { label: "Mixed" }],
-  tapa: [{ label: "Chicken" }, { label: "Beef" }],
   ramen: [{ label: "Mild" }, { label: "Spicy" }],
   "pancake classic": [
     { label: "Classic 2pcs", price: 40 },
@@ -12678,6 +12676,7 @@ function CrewTab({
     orderNumber: string;
   } | null>(null);
   const [activeCategory, setActiveCategory] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [receiptSrc, setReceiptSrc] = useState<string | null>(null);
@@ -12808,7 +12807,26 @@ function CrewTab({
   const availItems = menuItems.filter((i) => i.available);
   const categories = Array.from(new Set(availItems.map((i) => i.category)));
   const activeCat = activeCategory || categories[0] || "";
-  const filtered = availItems.filter((i) => i.category === activeCat);
+  const searchQuery = itemSearch.trim().toLowerCase();
+  const isSearching = searchQuery.length > 0;
+  // While searching, ignore the category filter entirely and match across
+  // every available item by name (and category, so "coffee" surfaces the
+  // whole Coffee section too). This is what actually solves "hard to find
+  // the food" — typing beats hunting through 18 category pills.
+  const filtered = isSearching
+    ? availItems.filter(
+        (i) =>
+          i.name.toLowerCase().includes(searchQuery) ||
+          i.category.toLowerCase().includes(searchQuery),
+      )
+    : availItems.filter((i) => i.category === activeCat);
+  const categoryCounts = categories.reduce<Record<string, number>>(
+    (acc, cat) => {
+      acc[cat] = availItems.filter((i) => i.category === cat).length;
+      return acc;
+    },
+    {},
+  );
   const cartSubtotal = cart.reduce(
     (s, c) => s + (c.item.price + c.extraPrice) * c.qty,
     0,
@@ -14240,18 +14258,80 @@ function CrewTab({
           <div style={{ minWidth: 0, overflow: "hidden" }}>
             <div
               style={{
+                position: "relative",
+                marginBottom: 12,
+              }}
+            >
+              <input
+                value={itemSearch}
+                onChange={(e) => setItemSearch(e.target.value)}
+                placeholder="Search menu items…"
+                style={{
+                  width: "100%",
+                  padding: "10px 36px 10px 14px",
+                  background: T.bgCard,
+                  border: `1px solid ${isSearching ? T.gold : T.border}`,
+                  borderRadius: 10,
+                  color: T.cream,
+                  fontSize: 13,
+                  outline: "none",
+                }}
+              />
+              {isSearching ? (
+                <button
+                  onClick={() => setItemSearch("")}
+                  aria-label="Clear search"
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: T.muted,
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              ) : (
+                <span
+                  style={{
+                    position: "absolute",
+                    right: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    color: T.faint,
+                    fontSize: 11,
+                    pointerEvents: "none",
+                  }}
+                >
+                  {availItems.length} items
+                </span>
+              )}
+            </div>
+            <div
+              style={{
                 display: "flex",
                 gap: 6,
                 flexWrap: "wrap",
                 marginBottom: 14,
+                opacity: isSearching ? 0.4 : 1,
+                pointerEvents: isSearching ? "none" : "auto",
+                transition: "opacity .15s",
               }}
             >
               {categories.map((cat) => {
-                const a = activeCat === cat;
+                const a = !isSearching && activeCat === cat;
                 return (
                   <button
                     key={cat}
-                    onClick={() => setActiveCategory(cat)}
+                    onClick={() => {
+                      setActiveCategory(cat);
+                      setItemSearch("");
+                    }}
                     style={{
                       whiteSpace: "nowrap",
                       padding: "5px 12px",
@@ -14265,13 +14345,39 @@ function CrewTab({
                       fontSize: 11,
                       letterSpacing: ".08em",
                       fontWeight: a ? 700 : 400,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
                     }}
                   >
                     {cat}
+                    <span
+                      style={{
+                        fontFamily: "inherit",
+                        fontSize: 10,
+                        fontWeight: 400,
+                        color: a ? "rgba(10,15,10,0.6)" : T.faint,
+                      }}
+                    >
+                      {categoryCounts[cat]}
+                    </span>
                   </button>
                 );
               })}
             </div>
+            {isSearching && (
+              <p
+                style={{
+                  color: T.muted,
+                  fontSize: 11,
+                  marginBottom: 10,
+                  letterSpacing: ".03em",
+                }}
+              >
+                {filtered.length} result{filtered.length === 1 ? "" : "s"} for
+                &ldquo;{itemSearch.trim()}&rdquo;
+              </p>
+            )}
             <div
               style={{
                 display: "grid",
@@ -14372,6 +14478,17 @@ function CrewTab({
                 }}
               >
                 <p>No available items. Ask admin to add some.</p>
+              </div>
+            )}
+            {availItems.length > 0 && isSearching && filtered.length === 0 && (
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "60px 20px",
+                  color: T.faint,
+                }}
+              >
+                <p>No items match &ldquo;{itemSearch.trim()}&rdquo;.</p>
               </div>
             )}
           </div>
