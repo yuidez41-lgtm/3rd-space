@@ -5299,7 +5299,10 @@ function MenuItemForm({
 }) {
   const [form, setForm] = useState<Partial<MenuItem>>(() => {
     if (!item) return { available: true };
-    if (item.options && item.options.length > 0) return item;
+    // If options field already exists (even as an empty array), trust it —
+    // it means the user has explicitly set/cleared options before.
+    // Only auto-derive legacy options when options was never set at all.
+    if (item.options !== undefined && item.options !== null) return item;
     const derived = deriveLegacyOptions(item);
     return derived.length > 0 ? { ...item, options: derived } : item;
   });
