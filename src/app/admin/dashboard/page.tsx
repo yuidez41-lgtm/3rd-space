@@ -5632,6 +5632,53 @@ function MenuItemForm({
                 </button>
                 <button
                   onClick={() => {
+                    if (gi === 0) return;
+                    const next = [...(form.options || [])];
+                    [next[gi - 1], next[gi]] = [next[gi], next[gi - 1]];
+                    set("options", next);
+                  }}
+                  disabled={gi === 0}
+                  title="Move up"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    border: `1px solid ${T.border}`,
+                    color: gi === 0 ? "rgba(255,255,255,0.2)" : T.gold,
+                    borderRadius: 6,
+                    padding: "8px 9px",
+                    cursor: gi === 0 ? "default" : "pointer",
+                  }}
+                >
+                  <ChevronUp size={12} />
+                </button>
+                <button
+                  onClick={() => {
+                    const opts = form.options || [];
+                    if (gi === opts.length - 1) return;
+                    const next = [...opts];
+                    [next[gi + 1], next[gi]] = [next[gi], next[gi + 1]];
+                    set("options", next);
+                  }}
+                  disabled={gi === (form.options || []).length - 1}
+                  title="Move down"
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    border: `1px solid ${T.border}`,
+                    color:
+                      gi === (form.options || []).length - 1
+                        ? "rgba(255,255,255,0.2)"
+                        : T.gold,
+                    borderRadius: 6,
+                    padding: "8px 9px",
+                    cursor:
+                      gi === (form.options || []).length - 1
+                        ? "default"
+                        : "pointer",
+                  }}
+                >
+                  <ChevronDown size={12} />
+                </button>
+                <button
+                  onClick={() => {
                     const next = (form.options || []).filter(
                       (_: any, i: number) => i !== gi,
                     );
