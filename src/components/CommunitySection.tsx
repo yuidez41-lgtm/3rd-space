@@ -487,7 +487,12 @@ export default function CommunitySection() {
                 something that feels like home.
               </p>
 
-              <Link href="/community" className="comm-cta">
+              <Link
+                href="https://m.me/cm/AbaNlABBaredyAjJ/?send_source=cm:direct_invite_group"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="comm-cta"
+              >
                 JOIN NOW
                 <svg
                   style={{ width: "0.75rem", height: "0.75rem", flexShrink: 0 }}
