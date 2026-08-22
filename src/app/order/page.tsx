@@ -108,7 +108,19 @@ function getCategoryCustomizations(
   // Orange drinks: no milk sub
   if (n.includes("orange")) return { addons: DRINK_ADDONS };
 
-  if (c.includes("3rd space"))
+  const drinkyKeywords = [
+    "coffee",
+    "tea",
+    "milktea",
+    "frappe",
+    "shake",
+    "smoothie",
+    "drink",
+    "beverage",
+    "latte",
+    "cooler",
+  ];
+  if (c.includes("3rd space") && drinkyKeywords.some((k) => c.includes(k)))
     return { substitutions: effMilk, addons: DRINK_ADDONS };
   if (c.includes("appetizer") || c.includes("snack"))
     return {
@@ -2310,9 +2322,16 @@ function MenuScreen({
         return;
       }
     }
-    // No variants — go straight to options sheet if options exist
-    if (item.options && item.options.length > 0) {
-      setGenericOptionsItem(item);
+    // No variants — go straight to options sheet if options exist.
+    // Trust an explicitly saved `options` array (even []) over the legacy
+    // fallback — an empty array means the admin deliberately cleared all
+    // option groups, so don't resurrect hardcoded category customizations.
+    if (item.options !== undefined && item.options !== null) {
+      if (item.options.length > 0) {
+        setGenericOptionsItem(item);
+        return;
+      }
+      onAddToCart(item, []);
       return;
     }
     // No variants or DB options — fall back to legacy category customizations
@@ -2836,8 +2855,11 @@ function MenuScreen({
               ...(price != null ? { price } : {}),
             };
             setVariantItem(null);
-            if (itemWithVariant.options && itemWithVariant.options.length > 0) {
-              const nonVariantOptions = itemWithVariant.options.filter(
+            const hasExplicitOptions =
+              itemWithVariant.options !== undefined &&
+              itemWithVariant.options !== null;
+            if (hasExplicitOptions && itemWithVariant.options!.length > 0) {
+              const nonVariantOptions = itemWithVariant.options!.filter(
                 (g: any) => g.name.toLowerCase() !== "variant",
               );
               if (nonVariantOptions.length > 0) {
@@ -2845,22 +2867,17 @@ function MenuScreen({
                   ...itemWithVariant,
                   options: nonVariantOptions,
                 });
-              } else {
-                const config = getCategoryCustomizations(
-                  variantItem.category,
-                  sauceItemsExist ? liveSauces : undefined,
-                  eggStyleItemsExist ? liveEggStyles : undefined,
-                  itemWithVariant.name,
-                  milkSubItemsExist ? liveMilkSubs : undefined,
-                  baseSubItemsExist ? liveBaseSubs : undefined,
-                );
-                if (config) {
-                  setCustomizingItem(itemWithVariant);
-                  setCustomizingConfig(config);
-                } else {
-                  onAddToCart(itemWithVariant, []);
-                }
+                return;
               }
+              // Options were explicitly configured but only contained the
+              // "Variant" group — don't fall back to legacy customizations,
+              // just add it as-is.
+              onAddToCart(itemWithVariant, []);
+              return;
+            }
+            if (hasExplicitOptions) {
+              // options explicitly set to [] — trust that, skip legacy fallback
+              onAddToCart(itemWithVariant, []);
               return;
             }
             const config = getCategoryCustomizations(

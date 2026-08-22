@@ -479,7 +479,19 @@ function getCrewCustomizations(
   if (n.includes("americano")) return { addons: DRINK_ADDONS };
   if (n.includes("orange")) return { addons: DRINK_ADDONS };
 
-  if (c.includes("3rd space"))
+  const drinkyKeywords = [
+    "coffee",
+    "tea",
+    "milktea",
+    "frappe",
+    "shake",
+    "smoothie",
+    "drink",
+    "beverage",
+    "latte",
+    "cooler",
+  ];
+  if (c.includes("3rd space") && drinkyKeywords.some((k) => c.includes(k)))
     return { substitutions: effMilk, addons: DRINK_ADDONS };
   if (c.includes("coffee"))
     return {
@@ -12906,8 +12918,19 @@ function CrewTab({
         return;
       }
     }
-    if (item.options && item.options.length > 0) {
-      setGenericOptionsItem(item);
+    if (item.options !== undefined && item.options !== null) {
+      // Options were explicitly set (even as []) via the admin editor —
+      // trust that as the source of truth. An empty array means the
+      // admin deliberately cleared all option groups, so skip both the
+      // options sheet AND the legacy hardcoded customizations fallback
+      // below (previously an empty array fell through to
+      // getCrewCustomizations() and resurrected things like "Milk" on
+      // items that had every group intentionally deleted).
+      if (item.options.length > 0) {
+        setGenericOptionsItem(item);
+        return;
+      }
+      addToCartFinal(item, 0, []);
       return;
     }
     const config = getCrewCustomizations(
@@ -14134,7 +14157,12 @@ function CrewTab({
                         ...(price != null ? { price } : {}),
                       };
                       setVariantItem(null);
-                      if (resolved.options && resolved.options.length > 0) {
+                      if (
+                        resolved.options !== undefined &&
+                        resolved.options !== null
+                      ) {
+                        // Explicitly configured (even as []) — trust it,
+                        // don't fall back to legacy hardcoded customizations.
                         const nonVariantOptions = resolved.options.filter(
                           (g: any) => g.name.toLowerCase() !== "variant",
                         );
@@ -14145,6 +14173,8 @@ function CrewTab({
                           });
                           return;
                         }
+                        addToCartFinal(resolved, 0, []);
+                        return;
                       }
                       const config = getCrewCustomizations(
                         resolved.category,
