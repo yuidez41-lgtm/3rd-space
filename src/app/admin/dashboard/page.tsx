@@ -436,6 +436,56 @@ type CrewCustomizationConfig = {
   eggStyles?: { name: string; image: string }[];
 };
 
+// Normalizes a label for matching regardless of spacing/case/the word
+// "Substitution" (e.g. "Oat Milk" and "Oatmilk Substitution" both -> "oatmilk").
+function normalizeSubLabel(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/substitution/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+// Items can have their own saved "Milk"/"Base" option group (set once in
+// the admin Edit Item form) whose choice prices are frozen at whatever they
+// were when saved. That used to permanently diverge from the live
+// "Substitutions" menu items (e.g. "Oatmilk Substitution") the moment
+// either was edited afterward. This overrides any choice in a Milk/Base
+// group whose label matches a live Substitution item's name with that
+// item's current live price, so editing the Substitution item's price
+// always applies everywhere — crew, customer order, and any item that
+// already has its own saved Milk/Base group — instead of only affecting
+// items that never had options saved at all.
+function syncOptionsWithLiveSubs(
+  item: MenuItem,
+  liveMilkSubs?: { label: string; price: number }[],
+  liveBaseSubs?: { label: string; price: number }[],
+): MenuItem {
+  if (!item.options || item.options.length === 0) return item;
+  if (!liveMilkSubs && !liveBaseSubs) return item;
+  const milkMap = new Map(
+    (liveMilkSubs || []).map((s) => [normalizeSubLabel(s.label), s.price]),
+  );
+  const baseMap = new Map(
+    (liveBaseSubs || []).map((s) => [normalizeSubLabel(s.label), s.price]),
+  );
+  const newOptions = item.options.map((g) => {
+    const gn = g.name.toLowerCase();
+    const isMilkGroup = gn.includes("milk");
+    const isBaseGroup = !isMilkGroup && gn.includes("base");
+    if (!isMilkGroup && !isBaseGroup) return g;
+    const map = isMilkGroup ? milkMap : baseMap;
+    return {
+      ...g,
+      choices: g.choices.map((c) => {
+        const key = normalizeSubLabel(c.label);
+        return map.has(key) ? { ...c, price: map.get(key)! } : c;
+      }),
+    };
+  });
+  return { ...item, options: newOptions };
+}
+
 const ITEM_VARIANTS: Record<string, { label: string; price?: number }[]> = {
   ramen: [{ label: "Mild" }, { label: "Spicy" }],
   "pancake classic": [
@@ -12927,7 +12977,13 @@ function CrewTab({
       // getCrewCustomizations() and resurrected things like "Milk" on
       // items that had every group intentionally deleted).
       if (item.options.length > 0) {
-        setGenericOptionsItem(item);
+        setGenericOptionsItem(
+          syncOptionsWithLiveSubs(
+            item,
+            milkSubItemsExist ? liveMilkSubs : undefined,
+            baseSubItemsExist ? liveBaseSubs : undefined,
+          ),
+        );
         return;
       }
       addToCartFinal(item, 0, []);
@@ -14167,10 +14223,13 @@ function CrewTab({
                           (g: any) => g.name.toLowerCase() !== "variant",
                         );
                         if (nonVariantOptions.length > 0) {
-                          setGenericOptionsItem({
-                            ...resolved,
-                            options: nonVariantOptions,
-                          });
+                          setGenericOptionsItem(
+                            syncOptionsWithLiveSubs(
+                              { ...resolved, options: nonVariantOptions },
+                              milkSubItemsExist ? liveMilkSubs : undefined,
+                              baseSubItemsExist ? liveBaseSubs : undefined,
+                            ),
+                          );
                           return;
                         }
                         addToCartFinal(resolved, 0, []);
